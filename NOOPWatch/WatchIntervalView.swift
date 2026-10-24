@@ -19,11 +19,15 @@ struct WatchIntervalView: View {
     // Cross-lane contract: a no-arg init, fully self-contained.
     init() {}
 
-    // MARK: Config (the phone's defaults — fixed on the watch, run-only surface)
+    // MARK: Config (nikhil/custom: pick a preset before starting — Classic 30/15×8, HIIT, Sprints)
 
-    private let workSeconds = 30
-    private let restSeconds = 15
-    private let rounds = 8
+    @AppStorage("custom.watchInterval.preset") private var presetID = IntervalPresets.classic.id
+    private var preset: IntervalPreset {
+        IntervalPresets.watch.first { $0.id == presetID } ?? IntervalPresets.classic
+    }
+    private var workSeconds: Int { preset.workSeconds }
+    private var restSeconds: Int { preset.restSeconds }
+    private var rounds: Int { preset.rounds }
 
     // MARK: Run state
 
@@ -109,18 +113,43 @@ struct WatchIntervalView: View {
         .padding(.horizontal, 4)
         .background(StrandPalette.surfaceBase.ignoresSafeArea())
         .onReceive(ticker) { _ in tick() }
-        .onAppear { if remaining == 0 { resetToStart() } }
+        .onAppear { if !running && elapsed == 0 { resetToStart() } }
     }
 
     // MARK: Header — phase chip + round chip
 
     private var header: some View {
         HStack {
-            phaseChip
+            if isCleanStart { presetChip } else { phaseChip }
             Spacer(minLength: 6)
             roundChip
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Before a session starts: the selected preset; tap to cycle through the presets.
+    private var presetChip: some View {
+        Button {
+            let all = IntervalPresets.watch
+            let i = all.firstIndex { $0.id == presetID } ?? 0
+            presetID = all[(i + 1) % all.count].id
+            resetToStart()
+            StrandHaptic.selection.play()
+        } label: {
+            HStack(spacing: 3) {
+                Text(preset.name)
+                    .font(StrandFont.rounded(13, weight: .heavy))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+            }
+            .foregroundStyle(StrandPalette.effortColor)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(StrandPalette.effortColor.opacity(0.16), in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).strokeBorder(StrandPalette.effortColor.opacity(0.35), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Preset \(preset.name), \(preset.summary). Tap to change.")
     }
 
     /// Tinted phase pill (WORK / REST / DONE).
@@ -240,7 +269,7 @@ struct WatchIntervalView: View {
         guard running, !isFinished else { return }
 
         // 3-2-1 countdown tick on the last seconds of the current phase — a light wrist tap.
-        if remaining <= 3 && remaining >= 1 {
+        if remaining <= 3 && remaining >= 1 && IntervalPresets.countdownTicks(phaseSeconds: phaseDuration) {
             StrandHaptic.selection.play()
         }
 

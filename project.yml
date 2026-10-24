@@ -432,6 +432,8 @@ targets:
         excludes:
           - "Info.plist"
           - "NOOPWatch.entitlements"
+      # nikhil/custom: interval presets shared with the phone timer.
+      - path: Strand/Custom/IntervalPresets.swift
     info:
       path: NOOPWatch/Info.plist
       properties:

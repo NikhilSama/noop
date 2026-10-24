@@ -13,11 +13,11 @@ struct IntervalTimerView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var live: LiveState
 
-    // MARK: Config (persisted only in-view)
+    // MARK: Config (nikhil/custom: remembered across visits, settable from one-tap presets)
 
-    @State private var workSeconds: Int = 30
-    @State private var restSeconds: Int = 15
-    @State private var rounds: Int = 8
+    @AppStorage("custom.interval.work") private var workSeconds: Int = 30
+    @AppStorage("custom.interval.rest") private var restSeconds: Int = 15
+    @AppStorage("custom.interval.rounds") private var rounds: Int = 8
 
     // MARK: Run state
 
@@ -112,7 +112,7 @@ struct IntervalTimerView: View {
             if currentRound > rounds { currentRound = rounds }
             if !running { resetToStart() }
         }
-        .onAppear { if remaining == 0 { resetToStart() } }
+        .onAppear { if !running && elapsed == 0 { resetToStart() } }
         // Keep the screen awake while a session runs (no-op on macOS). One onChange covers
         // every running→false transition — manual pause, auto-finish, and reset — and the
         // onDisappear is a safety net so navigating away mid-run never leaves the idle timer
@@ -337,17 +337,54 @@ struct IntervalTimerView: View {
         StrandCard {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Configure").strandOverline()
+                presetRow
                 configStepper(title: String(localized: "Work"), unit: String(localized: "sec"), value: $workSeconds,
-                              range: 5...600, step: 5, tint: StrandPalette.effortColor)
+                              range: 1...600, step: 5, tint: StrandPalette.effortColor)
                 Divider().overlay(StrandPalette.hairline)
                 configStepper(title: String(localized: "Rest"), unit: String(localized: "sec"), value: $restSeconds,
-                              range: 5...600, step: 5, tint: StrandPalette.restColor)
+                              range: 1...600, step: 5, tint: StrandPalette.restColor)
                 Divider().overlay(StrandPalette.hairline)
                 configStepper(title: String(localized: "Rounds"), unit: nil, value: $rounds,
                               range: 1...30, step: 1, tint: StrandPalette.textPrimary)
             }
             .disabled(running)
             .opacity(running ? StrandPalette.disabledOpacity : 1)
+        }
+    }
+
+    /// One-tap presets: fill work / rest / rounds and reset ready to Start (never auto-starts).
+    private var presetRow: some View {
+        HStack(spacing: 10) {
+            ForEach(IntervalPresets.quick) { preset in
+                let selected = preset.matches(work: workSeconds, rest: restSeconds, rounds: rounds)
+                Button {
+                    workSeconds = preset.workSeconds
+                    restSeconds = preset.restSeconds
+                    rounds = preset.rounds
+                    resetToStart()
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(preset.name).font(StrandFont.headline)
+                        Text(preset.summary).font(StrandFont.captionNumber)
+                            .foregroundStyle(selected ? StrandPalette.textPrimary : StrandPalette.textTertiary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(selected ? StrandPalette.effortColor.opacity(0.22) : StrandPalette.surfaceInset)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(selected ? StrandPalette.effortColor : StrandPalette.hairline, lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(StrandPalette.textPrimary)
+                .accessibilityLabel("\(preset.name) preset, \(preset.summary)")
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
         }
     }
 
@@ -380,8 +417,8 @@ struct IntervalTimerView: View {
     private func tick() {
         guard running, !isFinished else { return }
 
-        // Optional 3-2-1 countdown tick on the last seconds of the current phase.
-        if remaining <= 3 && remaining >= 1 {
+        // Optional 3-2-1 countdown tick on the last seconds of the current phase (skipped on short phases).
+        if remaining <= 3 && remaining >= 1 && IntervalPresets.countdownTicks(phaseSeconds: phaseDuration) {
             buzz(loops: 1)
             #if os(iOS)
             haptic(.tick)
