@@ -716,6 +716,10 @@ private struct MetricRow: View {
 /// StatTile row (Average / Min / Max / Latest / Δ), and a "What correlates" NoopCard.
 struct MetricDetailView: View {
     let metric: MetricDescriptor
+    /// nikhil/custom: set when opened from a Today hero gauge — shows that day's breakdown above the
+    /// chart and uses the remembered breakdown range (default 3 months).
+    var breakdownDay: String? = nil
+    @AppStorage("custom.heroBreakdownRange") private var breakdownRangeRaw = ExploreRange.quarter.rawValue
     @EnvironmentObject var repo: Repository
     /// #430 parity: the detail carries the SAME backdrop as the screen that pushed it — the day-cycle sky
     /// when the setting is on, the plain canvas when off — so a Key-Metrics tile tap doesn't jar from the
@@ -1011,6 +1015,9 @@ struct MetricDetailView: View {
                     // scores) or a big SF-Rounded headline, floated over the domain's starfield,
                     // with the range pill. Then the frosted chart / stat tiles / correlations.
                     heroHeader(effectiveRange: effRange, windowed: win, windowFellBack: fellBack)
+                    if let breakdownDay {
+                        HeroBreakdownSection(metricKey: metric.key, initialDay: breakdownDay, range: effRange)
+                    }
                     heroChart(effectiveRange: effRange, windowed: win, windowFellBack: fellBack)
                     // #1848: the skin-temp explorer's explanatory note (nil for every other metric and
                     // for a skin-temp screen that needs no explanation). Sits between the chart and the
@@ -1071,7 +1078,13 @@ struct MetricDetailView: View {
         .task(id: loadTaskID) { await load() }
         // Range changes the window, hence the correlation inputs — recompute the
         // cached scan rather than letting `correlationCard` run it inside body.
-        .onChangeCompat(of: range) { _ in recomputeCorrelations() }
+        .onChangeCompat(of: range) { newRange in
+            recomputeCorrelations()
+            if breakdownDay != nil { breakdownRangeRaw = newRange.rawValue }
+        }
+        .onAppear {
+            if breakdownDay != nil, let saved = ExploreRange(rawValue: breakdownRangeRaw) { range = saved }
+        }
     }
 
     /// Two phases, because the screen used to wait for data it does not draw.

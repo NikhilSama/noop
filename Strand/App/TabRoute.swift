@@ -35,6 +35,8 @@ enum TabRoute: Hashable {
     case health
     case hydration
     case coupled
+    /// nikhil/custom: a hero gauge's detail page with its breakdown for one day on top.
+    case heroBreakdown(key: String, day: String)
 }
 
 extension View {
@@ -71,6 +73,12 @@ extension View {
             case .health: HealthView()
             case .hydration: HydrationView()
             case .coupled: CoupledView()
+            case .heroBreakdown(let key, let day):
+                if let m = MetricCatalog.all.first(where: { $0.key == key }) {
+                    MetricDetailView(metric: m, breakdownDay: day)
+                } else {
+                    HealthView()
+                }
             }
         }
     }
