@@ -649,14 +649,9 @@ struct LiquidTodayView: View {
                 guard measured > 0, abs(measured - headerControlsWidth) > 0.5 else { return }
                 headerControlsWidth = measured
             }
-            // Subtle NOOP wordmark in the sky between header and hero. Perfectly centred (a letter row has
-            // no trailing tracking gap the way `Text(...).tracking()` does), with a tap easter egg.
-            // #today-layout: the hero + Start-session row moved OUT of the scene into the reorderable
-            // section block below. The wordmark's bottom pad (10) + the section VStack's 12 spacing keeps
-            // the default hero-under-wordmark gap at the original 22.
-            LiquidWordmark()
-                .padding(.top, 30)
-                .padding(.bottom, 10)
+            // NOOP wordmark removed (nikhil/custom) — it only took vertical space. A small gap keeps the
+            // hero clear of the header row.
+            Color.clear.frame(height: 8)
         }
     }
 
@@ -2159,66 +2154,6 @@ private struct LiquidHeartRateCardFrameKey: PreferenceKey {
 private struct PullOffsetKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
-// MARK: - NOOP wordmark (centred, with a tap easter egg)
-
-/// The subtle NOOP wordmark. Built as a row of letters (not `Text(...).tracking()`, which adds a
-/// trailing gap after the last glyph and pushes the word off-centre), so it sits DEAD centre. Tap it
-/// for a little easter egg: it plays one of several random one-shot animations — wiggle, shake, flip,
-/// spin, bounce, or a jelly squash — with a light haptic.
-private struct LiquidWordmark: View {
-    @State private var rot = 0.0      // z-rotation (wiggle / spin)
-    @State private var scaleX = 1.0   // horizontal scale (jelly squash)
-    @State private var scaleY = 1.0   // vertical scale (bounce / jelly)
-    @State private var dx = 0.0       // horizontal offset (shake)
-    @State private var flip = 0.0     // y-axis 3D flip
-    @State private var token = 0      // drives the tap haptic
-
-    var body: some View {
-        HStack(spacing: 14) {
-            ForEach(Array("NOOP".enumerated()), id: \.offset) { _, ch in
-                Text(String(ch))
-                    .font(StrandFont.rounded(16, weight: .bold))
-                    .foregroundStyle(StrandPalette.textTertiary)
-            }
-        }
-        .shadow(color: .black.opacity(0.25), radius: 6, y: 1)
-        .rotationEffect(.degrees(rot))
-        .scaleEffect(x: scaleX, y: scaleY)
-        .offset(x: dx)
-        .rotation3DEffect(.degrees(flip), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
-        .contentShape(Rectangle())
-        .onTapGesture { playRandomEgg() }
-        .liquidTapHaptic(trigger: token)
-        .frame(maxWidth: .infinity)
-        .accessibilityHidden(true)
-    }
-
-    /// The easter egg: one of several one-shot animations at random. The oscillating ones (wiggle/shake/
-    /// squash) kick the value to an extreme then let an under-damped spring settle it back through zero,
-    /// which reads as a natural wobble without hand-authored keyframes.
-    private func playRandomEgg() {
-        token &+= 1
-        switch Int.random(in: 0..<6) {
-        case 0: // wiggle
-            rot = -14
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.28)) { rot = 0 }
-        case 1: // shake
-            dx = -12
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.26)) { dx = 0 }
-        case 2: // flip
-            withAnimation(.easeInOut(duration: 0.6)) { flip += 360 }
-        case 3: // spin
-            withAnimation(.easeInOut(duration: 0.55)) { rot += 360 }
-        case 4: // bounce
-            scaleX = 1.28; scaleY = 1.28
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.42)) { scaleX = 1; scaleY = 1 }
-        default: // jelly (squash + stretch)
-            scaleX = 1.35; scaleY = 0.7
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.3)) { scaleX = 1; scaleY = 1 }
-        }
-    }
 }
 
 // MARK: - Hero score cell (count-up number over a filling vessel, tap-to-splash)
