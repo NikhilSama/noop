@@ -10,6 +10,17 @@ final class CustomIntervalPresetTests: XCTestCase {
         XCTAssertEqual(IntervalPresets.sprints.summary, "0:06 / 0:04 × 20")
     }
 
+    func testThirtiesIsRestFirstTenMinutesWithCountedCues() {
+        let p = IntervalPresets.thirties
+        XCTAssertTrue(p.restFirst)
+        XCTAssertTrue(p.countedCues)
+        XCTAssertEqual(p.totalSeconds, 600)               // 10 × (30 s rest + 30 s work)
+        XCTAssertEqual(p.summary, "rest 0:30 → 0:30 × 10")
+        XCTAssertEqual(IntervalPresets.hiit.totalSeconds, 6 * 240 + 5 * 180)
+        XCTAssertTrue(IntervalPresets.quick.contains(p))
+        XCTAssertTrue(IntervalPresets.watch.contains(p))
+    }
+
     func testCountdownTicksSkippedOnShortPhases() {
         XCTAssertFalse(IntervalPresets.countdownTicks(phaseSeconds: 4))
         XCTAssertFalse(IntervalPresets.countdownTicks(phaseSeconds: 10))

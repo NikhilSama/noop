@@ -18,6 +18,15 @@ struct IntervalTimerView: View {
     @AppStorage("custom.interval.work") private var workSeconds: Int = 30
     @AppStorage("custom.interval.rest") private var restSeconds: Int = 15
     @AppStorage("custom.interval.rounds") private var rounds: Int = 8
+    /// Set by a rest-first preset (30/30); cleared once the steppers move off every preset.
+    @AppStorage("custom.interval.restFirst") private var restFirst = false
+    /// The preset the current settings came from, if they still match one — drives rest-first and cue style.
+    private var activePreset: IntervalPreset? {
+        IntervalPresets.quick.first { $0.matches(work: workSeconds, rest: restSeconds, rounds: rounds) && $0.restFirst == restFirst }
+    }
+    private var countedCues: Bool { activePreset?.countedCues ?? false }
+    /// True while the opening rest of a rest-first session runs (it doesn't start a new round).
+    @State private var leadInRest = false
 
     // MARK: Run state
 
@@ -106,9 +115,10 @@ struct IntervalTimerView: View {
             }
         }
         .onReceive(ticker) { _ in tick() }
-        .onChangeCompat(of: workSeconds) { _ in if !running { resetToStart() } }
-        .onChangeCompat(of: restSeconds) { _ in if !running { resetToStart() } }
+        .onChangeCompat(of: workSeconds) { _ in clearRestFirstIfCustom(); if !running { resetToStart() } }
+        .onChangeCompat(of: restSeconds) { _ in clearRestFirstIfCustom(); if !running { resetToStart() } }
         .onChangeCompat(of: rounds) { _ in
+            clearRestFirstIfCustom()
             if currentRound > rounds { currentRound = rounds }
             if !running { resetToStart() }
         }
@@ -268,7 +278,7 @@ struct IntervalTimerView: View {
                        kind: .secondary, fullWidth: true) {
                 stopAndReset()
             }
-            .disabled(!running && remaining == phaseDuration && currentRound == 1 && phase == .work && elapsed == 0)
+            .disabled(!running && currentRound == 1 && elapsed == 0)
         }
     }
 
@@ -356,8 +366,9 @@ struct IntervalTimerView: View {
     private var presetRow: some View {
         HStack(spacing: 10) {
             ForEach(IntervalPresets.quick) { preset in
-                let selected = preset.matches(work: workSeconds, rest: restSeconds, rounds: rounds)
+                let selected = activePreset == preset
                 Button {
+                    restFirst = preset.restFirst
                     workSeconds = preset.workSeconds
                     restSeconds = preset.restSeconds
                     rounds = preset.rounds
@@ -366,6 +377,7 @@ struct IntervalTimerView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(preset.name).font(StrandFont.headline)
                         Text(preset.summary).font(StrandFont.captionNumber)
+                            .lineLimit(1).minimumScaleFactor(0.7)
                             .foregroundStyle(selected ? StrandPalette.textPrimary : StrandPalette.textTertiary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -418,7 +430,8 @@ struct IntervalTimerView: View {
         guard running, !isFinished else { return }
 
         // Optional 3-2-1 countdown tick on the last seconds of the current phase (skipped on short phases).
-        if remaining <= 3 && remaining >= 1 && IntervalPresets.countdownTicks(phaseSeconds: phaseDuration) {
+        if remaining <= 3 && remaining >= 1 && !countedCues
+            && IntervalPresets.countdownTicks(phaseSeconds: phaseDuration) {
             buzz(loops: 1)
             #if os(iOS)
             haptic(.tick)
@@ -446,20 +459,28 @@ struct IntervalTimerView: View {
                 // Into rest.
                 phase = .rest
                 remaining = max(1, restSeconds)
-                buzz(loops: 1)              // short cue into rest
-                #if os(iOS)
-                haptic(.rest)
-                #endif
+                if countedCues {
+                    countedCue(2)           // two buzzes: work is over
+                } else {
+                    buzz(loops: 1)          // short cue into rest
+                    #if os(iOS)
+                    haptic(.rest)
+                    #endif
+                }
             }
         case .rest:
-            // Rest done → next round's work.
-            currentRound += 1
+            // Rest done → work (a new round, unless this was a rest-first session's opening rest).
+            if leadInRest { leadInRest = false } else { currentRound += 1 }
             phase = .work
             remaining = max(1, workSeconds)
-            buzz(loops: 3)                  // strong cue into work
-            #if os(iOS)
-            haptic(.work)
-            #endif
+            if countedCues {
+                countedCue(1)               // one buzz: rest is over
+            } else {
+                buzz(loops: 3)              // strong cue into work
+                #if os(iOS)
+                haptic(.work)
+                #endif
+            }
         case .done:
             break
         }
@@ -483,8 +504,7 @@ struct IntervalTimerView: View {
             running = false
         } else {
             // Starting fresh from a clean reset → fire the opening WORK cue.
-            let startingFresh = (phase == .work && currentRound == 1
-                                 && remaining == max(1, workSeconds) && elapsed == 0)
+            let startingFresh = currentRound == 1 && elapsed == 0
             running = true
             if startingFresh {
                 buzz(loops: 3)
@@ -502,10 +522,26 @@ struct IntervalTimerView: View {
 
     /// Reset run state back to round 1 / start of work, using current config.
     private func resetToStart() {
-        phase = .work
+        let restLead = activePreset?.restFirst ?? false
+        phase = restLead ? .rest : .work
+        leadInRest = restLead
         currentRound = 1
-        remaining = max(1, workSeconds)
+        remaining = max(1, restLead ? restSeconds : workSeconds)
         elapsed = 0
+    }
+
+    private func clearRestFirstIfCustom() {
+        if restFirst && activePreset == nil { restFirst = false }
+    }
+
+    /// `n` distinct buzzes on the strap and the iPhone, for presets that count their cues.
+    private func countedCue(_ n: Int) {
+        buzz(loops: UInt8(n))
+        #if os(iOS)
+        for i in 0..<n {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4 * Double(i)) { haptic(.work) }
+        }
+        #endif
     }
 
     /// Fire a strap buzz (no-op when not bonded — `buzz` already guards, but we

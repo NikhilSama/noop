@@ -1,5 +1,6 @@
 import SwiftUI
 import StrandDesign
+import WatchKit
 
 // MARK: - WatchIntervalView — silent haptic HIIT, on the wrist
 //
@@ -28,6 +29,8 @@ struct WatchIntervalView: View {
     private var workSeconds: Int { preset.workSeconds }
     private var restSeconds: Int { preset.restSeconds }
     private var rounds: Int { preset.rounds }
+    /// True while the opening rest of a rest-first session runs (it doesn't start a new round).
+    @State private var leadInRest = false
 
     // MARK: Run state
 
@@ -259,8 +262,7 @@ struct WatchIntervalView: View {
 
     /// True when nothing has run yet — disables Reset so it never looks active on a fresh session.
     private var isCleanStart: Bool {
-        !running && phase == .work && currentRound == 1
-            && remaining == max(1, workSeconds) && elapsed == 0
+        !running && currentRound == 1 && elapsed == 0
     }
 
     // MARK: Timer logic (reimplemented to match the phone's parameters)
@@ -269,7 +271,8 @@ struct WatchIntervalView: View {
         guard running, !isFinished else { return }
 
         // 3-2-1 countdown tick on the last seconds of the current phase — a light wrist tap.
-        if remaining <= 3 && remaining >= 1 && IntervalPresets.countdownTicks(phaseSeconds: phaseDuration) {
+        if remaining <= 3 && remaining >= 1 && !preset.countedCues
+            && IntervalPresets.countdownTicks(phaseSeconds: phaseDuration) {
             StrandHaptic.selection.play()
         }
 
@@ -294,14 +297,15 @@ struct WatchIntervalView: View {
                 // Into rest — a soft single cue.
                 phase = .rest
                 remaining = max(1, restSeconds)
-                StrandHaptic.light.play()
+                if preset.countedCues { countedCue(2) } else { StrandHaptic.light.play() }
             }
         case .rest:
-            // Rest done → next round's work — a strong cue so you feel it without looking.
-            currentRound += 1
+            // Rest done → work — a strong cue so you feel it without looking. A rest-first session's
+            // opening rest leads into round 1 rather than starting a new round.
+            if leadInRest { leadInRest = false } else { currentRound += 1 }
             phase = .work
             remaining = max(1, workSeconds)
-            StrandHaptic.commit.play()
+            if preset.countedCues { countedCue(1) } else { StrandHaptic.commit.play() }
         case .done:
             break
         }
@@ -335,10 +339,21 @@ struct WatchIntervalView: View {
 
     /// Reset run state back to round 1 / start of work, using current config.
     private func resetToStart() {
-        phase = .work
+        phase = preset.restFirst ? .rest : .work
+        leadInRest = preset.restFirst
         currentRound = 1
-        remaining = max(1, workSeconds)
+        remaining = max(1, preset.restFirst ? restSeconds : workSeconds)
         elapsed = 0
+    }
+
+    /// `n` separate strong taps (0.5 s apart) — one = rest over, two = work over. `.start` is a single
+    /// crisp tap, unlike `.success`, whose built-in pattern would muddle the count.
+    private func countedCue(_ n: Int) {
+        for i in 0..<n {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5 * Double(i)) {
+                WKInterfaceDevice.current().play(.start)
+            }
+        }
     }
 }
 
