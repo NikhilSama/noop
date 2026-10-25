@@ -4157,6 +4157,10 @@ struct TodayView: View {
                 sparkline: sparks["skin_temp"],
                 sparkColor: StrandPalette.metricAmber
             )
+        case .bodyFat, .fatMass, .leanMass:
+            // nikhil/custom: body composition is wired on the Liquid Today screen only.
+            StatTile(label: LocalizedStringKey(metric.title), value: "—", caption: "Liquid Today", accent: StrandPalette.textPrimary,
+                     sparkline: nil, sparkColor: StrandPalette.metricAmber)
         }
     }
 

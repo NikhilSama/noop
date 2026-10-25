@@ -50,6 +50,9 @@ extension KeyMetric {
         case .calories: return "flame.fill"
         // Same glyph the sibling "Your Cards" tile (`DashboardCard.skinTemp`) already uses.
         case .skinTemp: return "thermometer.medium"
+        case .bodyFat: return "percent"
+        case .fatMass: return "drop.halffull"
+        case .leanMass: return "figure.strengthtraining.traditional"
         }
     }
 
@@ -62,6 +65,8 @@ extension KeyMetric {
         case .bloodOxygen, .steps: return StrandPalette.metricCyan
         case .respiratory, .weight: return StrandPalette.accent
         case .calories, .skinTemp: return StrandPalette.metricAmber
+        case .bodyFat, .fatMass: return StrandPalette.metricAmber
+        case .leanMass: return StrandPalette.chargeColor
         }
     }
 }

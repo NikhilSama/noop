@@ -31,6 +31,10 @@ enum KeyMetric: String, CaseIterable, Identifiable {
     /// added to `defaultOrder` below, so an existing user's saved layout (and a fresh install's default)
     /// is byte-identical to before; only opts in via the layout editor.
     case skinTemp
+    // nikhil/custom: body composition from Apple Health weight + body-fat % (see BodyComposition).
+    case bodyFat
+    case fatMass
+    case leanMass
 
     var id: String { rawValue }
 
@@ -50,6 +54,9 @@ enum KeyMetric: String, CaseIterable, Identifiable {
         // Same short label the sibling "Your Cards" tile (`DashboardCard.skinTemp`) already uses —
         // reuses its translation key rather than adding a new "Skin Temperature" one for this tile.
         case .skinTemp:    return String(localized: "Skin Temp")
+        case .bodyFat:     return String(localized: "Body Fat")
+        case .fatMass:     return "Fat Mass"
+        case .leanMass:    return "Lean Mass"
         }
     }
 

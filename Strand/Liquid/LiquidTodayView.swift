@@ -68,6 +68,7 @@ struct LiquidTodayView: View {
     @State private var stepsEst: Double?           // steps_est, day-keyed to the selected day (fallback)
     @State private var importedStepsDay: Int?      // Apple Health steps for the selected day (middle tier)
     @State private var importedActiveKcalDay: Double?  // #616: Apple Health active energy for the day (calorie fallback)
+    @State private var bodyComp: [BodyCompPoint] = []   // nikhil/custom: body-fat readings + paired weight
     @State private var weightKg: Double?           // #204: Apple Health weight ?: profile fallback
     @State private var hrValues: [Double] = []     // hrBuckets since midnight → 5-min means
     /// Line identity for [hrValues], from the bucket timestamps this used to discard (#2082).
@@ -1470,6 +1471,26 @@ struct LiquidTodayView: View {
             ktile(String(localized: "Skin Temp"), icon: keyMetricIcon(metric), skinText, "", StrandPalette.metricAmber, nil, key: "skin_temp",
                   range: TileRange(current: displayDay?.skinTempDevC ?? vitalsDay?.skinTempDevC, goodness: .nearZero,
                                    format: { String(format: "%+.1f", locale: AppLanguage.activeLocale, $0) }))
+        case .bodyFat, .fatMass, .leanMass:
+            // nikhil/custom: latest body-fat reading on/before the selected day, its paired weight, and the
+            // derived masses — the same BodyCompPoint feeds the value, the strip's dot and its history.
+            let pt = bodyComp.last(where: { $0.day <= selectedDayKey })
+            let bodyFatDetail = MetricCatalog.all.first(where: { $0.key == "body_fat" })
+            let cap = pt.map { $0.day == selectedDayKey ? String(localized: "latest") : String($0.day.suffix(5)) }
+            switch metric {
+            case .bodyFat:
+                ktile(String(localized: "Body Fat"), icon: keyMetricIcon(metric), pt.map { String(format: "%.1f", locale: AppLanguage.activeLocale, $0.bodyFatPct) } ?? Self.noValueDash, "%",
+                      StrandPalette.metricAmber, nil, key: "body_fat", caption: cap,
+                      range: TileRange(current: pt?.bodyFatPct, goodness: .lower, format: { String(format: "%.1f", locale: AppLanguage.activeLocale, $0) }))
+            case .fatMass:
+                ktile("Fat Mass", icon: keyMetricIcon(metric), pt.map { UnitFormatter.massFromKilograms($0.fatKg, system: unitSystem) } ?? Self.noValueDash, "",
+                      StrandPalette.metricAmber, nil, key: "fat_mass", detailMetric: bodyFatDetail, caption: cap,
+                      range: TileRange(current: pt?.fatKg, goodness: .lower, format: { UnitFormatter.massFromKilograms($0, system: unitSystem) }))
+            default:
+                ktile("Lean Mass", icon: keyMetricIcon(metric), pt.map { UnitFormatter.massFromKilograms($0.leanKg, system: unitSystem) } ?? Self.noValueDash, "",
+                      StrandPalette.chargeColor, nil, key: "lean_mass_calc", detailMetric: bodyFatDetail, caption: cap,
+                      range: TileRange(current: pt?.leanKg, goodness: .higher, format: { UnitFormatter.massFromKilograms($0, system: unitSystem) }))
+            }
         }
     }
 
@@ -1486,6 +1507,9 @@ struct LiquidTodayView: View {
         case .weight: return "scalemass.fill"
         case .calories: return "flame.fill"
         case .skinTemp: return "thermometer.medium"
+        case .bodyFat: return "percent"
+        case .fatMass: return "drop.halffull"
+        case .leanMass: return "figure.strengthtraining.traditional"
         }
     }
 
@@ -1756,6 +1780,7 @@ struct LiquidTodayView: View {
         // Queue 11a: SpO₂ candidate fallback (see `spo2CandidateByDay`'s declaration).
         async let spo2CandA = repo.exploreSeries(key: "spo2_candidate", source: "my-whoop")
         async let weightA = repo.series(key: "weight", source: "apple-health", days: 91)
+        async let bodyFatA = repo.series(key: "body_fat", source: "apple-health", days: 91)
         async let appleA = repo.appleDailyRows()
         async let hrA = repo.hrBuckets(from: from, to: to, bucketSeconds: 300)
         async let wkA = repo.workoutRows()
@@ -1813,7 +1838,13 @@ struct LiquidTodayView: View {
         for r in sparkRows { if let k = r.activeKcalEst { winOnDeviceKcal[r.day] = k } }
         let energyKcalSpark: [(String, Double)] = Set(winImportedKcal.keys).union(winOnDeviceKcal.keys).sorted()
             .compactMap { day in (winImportedKcal[day] ?? winOnDeviceKcal[day]).map { (day, $0) } }
+        let bodyCompPts = BodyComposition.series(weight: await weightA, bodyFat: await bodyFatA)
+        bodyComp = bodyCompPts
+        let bodyCompWin = bodyCompPts.filter { $0.day >= sparkCutoff && $0.day <= selectedDayKey }
         kSparks = [
+            "body_fat": bodyCompWin.map { ($0.day, $0.bodyFatPct) },
+            "fat_mass": bodyCompWin.map { ($0.day, $0.fatKg) },
+            "lean_mass_calc": bodyCompWin.map { ($0.day, $0.leanKg) },
             "recovery": sparkRows.compactMap { r in r.recovery.map { (r.day, $0) } },
             "strain": sparkRows.compactMap { r in r.strain.map { (r.day, $0) } },
             "hrv": sparkRows.compactMap { r in r.avgHrv.map { (r.day, $0) } },
