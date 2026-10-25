@@ -57,6 +57,9 @@ struct RangeStrip: View {
     let format: (Double) -> String
     /// Draws the mean / median / today / typical key under the strip (first strip on a page only).
     var showLegend = false
+    /// Narrow-tile layout (Key Metrics grid): full-width bar with min · percentile · max beneath, and no
+    /// tap-to-expand, since the enclosing tile is itself a tap target.
+    var compact = false
 
     @State private var expanded = false
 
@@ -76,6 +79,31 @@ struct RangeStrip: View {
     }
 
     var body: some View {
+        if compact { compactBody } else { fullBody }
+    }
+
+    private var compactBody: some View {
+        VStack(spacing: 3) {
+            bar.frame(height: 14)
+            HStack(spacing: 4) {
+                Text(format(stats.min))
+                Spacer(minLength: 2)
+                if let v = current {
+                    Text(Self.ordinal(stats.percentile(of: v))).foregroundStyle(todayColor)
+                }
+                Spacer(minLength: 2)
+                Text(format(stats.max))
+            }
+            .font(StrandFont.captionNumber)
+            .foregroundStyle(StrandPalette.textTertiary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var fullBody: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Text(format(stats.min))
@@ -198,4 +226,12 @@ struct RangeStrip: View {
         }
         return "\(n)\(suffix)"
     }
+}
+
+/// What a Key Metrics tile hands its compact strip: the tile's own displayed value (so the dot and the
+/// number above it are one reading), which side is good, and a short unit-less formatter for min/max.
+struct TileRange {
+    let current: Double?
+    var goodness: RangeGoodness = .higher
+    let format: (Double) -> String
 }
