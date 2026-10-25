@@ -89,7 +89,7 @@ struct TodayCustomizationSheet: View {
         )
         let metrics = EditableLayoutDraft(
             visible: KeyMetricPrefs.decodeEnabled(keyMetricsRaw.wrappedValue),
-            allItems: KeyMetric.defaultOrder
+            allItems: KeyMetric.allCases  // nikhil/custom: offer every tile (upstream listed only the defaults)
         )
         let cards = EditableLayoutDraft(
             visible: DashboardCardPrefs.decodeEnabled(dashboardCardsRaw.wrappedValue),
