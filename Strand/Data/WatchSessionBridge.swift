@@ -257,12 +257,30 @@ extension WatchSessionBridge: WCSessionDelegate {
         }
     }
 
+    /// nikhil/custom: set at app launch to buzz the strap when the watch interval timer asks.
+    @MainActor static var onStrapBuzz: ((UInt8) -> Void)?
+
+    /// Handles the watch timer's strap-buzz request; true when `message` was one.
+    nonisolated private static func handleStrapBuzz(_ message: [String: Any]) -> Bool {
+        guard let n = message[IntervalPresets.strapBuzzMessageKey] as? Int, (1...10).contains(n) else { return false }
+        Task { @MainActor in onStrapBuzz?(UInt8(n)) }
+        return true
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        _ = Self.handleStrapBuzz(message)
+    }
+
     /// The watch's "send me the latest" request on launch. We re-mirror the last snapshot into the
     /// shared app group and reply with it inline so the watch has a value the instant it asks. The
     /// reply also lets the watch confirm the link is live.
     nonisolated func session(_ session: WCSession,
                              didReceiveMessage message: [String: Any],
                              replyHandler: @escaping ([String: Any]) -> Void) {
+        if Self.handleStrapBuzz(message) {
+            replyHandler([:])
+            return
+        }
         guard message[Self.requestLatestKey] != nil else {
             replyHandler([:])
             return

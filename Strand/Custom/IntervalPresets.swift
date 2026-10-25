@@ -49,4 +49,8 @@ enum IntervalPresets {
     /// The 3-2-1 countdown ticks only make sense on phases long enough to need a warning; on a
     /// ≤10 s phase they would buzz nearly every second and drown out the work/rest cues.
     static func countdownTicks(phaseSeconds: Int) -> Bool { phaseSeconds > 10 }
+
+    /// WatchConnectivity message key: the watch timer asks the phone to buzz the strap `n` loops
+    /// (value: Int), so a session started on the wrist cues the WHOOP exactly like one started on the phone.
+    static let strapBuzzMessageKey = "custom.interval.strapBuzz"
 }

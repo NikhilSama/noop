@@ -20,7 +20,7 @@ struct StrandiOSApp: App {
     @StateObject private var health: HealthKitBridge
     /// The phone→watch link. Built + activated here so the watch app actually receives snapshots on a
     /// real device; without an owner that pushes it, the watch only ever shows placeholder data.
-    @StateObject private var watch = WatchSessionBridge()
+    @StateObject private var watch: WatchSessionBridge
     /// Shared cross-screen navigation hook (e.g. Live → Devices). The iOS shell (`RootTabView`)
     /// observes it and presents the Devices manager.
     @StateObject private var router: NavRouter
@@ -86,6 +86,14 @@ struct StrandiOSApp: App {
         NotificationPresenter.shared.onCoachBriefTapped = { [weak router] in router?.openCoach() }
         let model = AppModel()
         _model = StateObject(wrappedValue: model)
+        // nikhil/custom: activate the watch link at launch (not only from the first view's .task) so a
+        // background-woken app still receives the watch interval timer's strap-buzz requests.
+        let watchBridge = WatchSessionBridge()
+        watchBridge.activate()
+        _watch = StateObject(wrappedValue: watchBridge)
+        WatchSessionBridge.onStrapBuzz = { [weak model] loops in
+            model?.buzz(loops: loops, gate: HapticPrefs.intervals)
+        }
         CoachBriefScheduler.register(generateBrief: { [weak coach = model.coach] in
             await coach?.generateBrief()
         }, log: { [weak model] line in

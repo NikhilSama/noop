@@ -1,6 +1,7 @@
 import SwiftUI
 import StrandDesign
 import WatchKit
+import WatchConnectivity
 
 // MARK: - WatchIntervalView — silent haptic HIIT, on the wrist
 //
@@ -297,7 +298,7 @@ struct WatchIntervalView: View {
                 // Into rest — a soft single cue.
                 phase = .rest
                 remaining = max(1, restSeconds)
-                if preset.countedCues { countedCue(2) } else { StrandHaptic.light.play() }
+                if preset.countedCues { countedCue(2) } else { StrandHaptic.light.play(); strapBuzz(1) }
             }
         case .rest:
             // Rest done → work — a strong cue so you feel it without looking. A rest-first session's
@@ -305,7 +306,7 @@ struct WatchIntervalView: View {
             if leadInRest { leadInRest = false } else { currentRound += 1 }
             phase = .work
             remaining = max(1, workSeconds)
-            if preset.countedCues { countedCue(1) } else { StrandHaptic.commit.play() }
+            if preset.countedCues { countedCue(1) } else { StrandHaptic.commit.play(); strapBuzz(3) }
         case .done:
             break
         }
@@ -318,6 +319,7 @@ struct WatchIntervalView: View {
             running = false
         }
         StrandHaptic.success.play()         // long completion cue
+        strapBuzz(5)
     }
 
     private func toggleRunning() {
@@ -328,7 +330,7 @@ struct WatchIntervalView: View {
             // Starting fresh from a clean reset → fire the opening WORK cue, like the phone does.
             let startingFresh = isCleanStart
             running = true
-            if startingFresh { StrandHaptic.commit.play() }
+            if startingFresh { StrandHaptic.commit.play(); strapBuzz(3) }
         }
     }
 
@@ -346,14 +348,24 @@ struct WatchIntervalView: View {
         elapsed = 0
     }
 
-    /// `n` separate strong taps (0.5 s apart) — one = rest over, two = work over. `.start` is a single
-    /// crisp tap, unlike `.success`, whose built-in pattern would muddle the count.
+    /// `n` separate prominent buzzes on the wrist (0.9 s apart, so two never blur into one) plus `n` on the
+    /// strap — one = rest over, two = work over.
     private func countedCue(_ n: Int) {
         for i in 0..<n {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5 * Double(i)) {
-                WKInterfaceDevice.current().play(.start)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9 * Double(i)) {
+                WKInterfaceDevice.current().play(.notification)
             }
         }
+        strapBuzz(n)
+    }
+
+    /// Ask the phone to buzz the WHOOP `loops` times (the phone owns the strap link), mirroring the
+    /// phone timer's strap cues. Best-effort: silently skipped when the phone isn't reachable.
+    private func strapBuzz(_ loops: Int) {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        guard session.activationState == .activated, session.isReachable else { return }
+        session.sendMessage([IntervalPresets.strapBuzzMessageKey: loops], replyHandler: nil, errorHandler: nil)
     }
 }
 
