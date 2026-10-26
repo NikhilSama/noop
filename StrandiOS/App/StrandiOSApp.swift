@@ -180,8 +180,21 @@ struct StrandiOSApp: App {
         // scenePhase pass below starts the offload and wrote to Health in parallel with it, so a night
         // synced on open only reached Health at the next launch. Weak so the scene owns the bridge's
         // lifetime; the bridge no-ops unless Health was authorized.
-        model.healthWriteBack = { [weak bridge] in
+        model.healthWriteBack = { [weak bridge, weak model] in
             _ = await bridge?.writeBackAfterNewData()
+            // nikhil/custom: the strap sync is the reliable background wake, so it also drives the
+            // noon / 7 pm folder backup (no-op unless a slot has passed since the last one).
+            if let repo = model?.repo { Self.backUpIfDue(repo) }
+        }
+    }
+
+    /// nikhil/custom: run the folder backup if a noon / 7 pm slot is due, off the main actor, holding a
+    /// background-task assertion so a sync-woken app gets time to finish the write.
+    static func backUpIfDue(_ repo: Repository) {
+        Task.detached(priority: .utility) {
+            let task = await UIApplication.shared.beginBackgroundTask(withName: "noop-folder-backup", expirationHandler: nil)
+            await FolderBackup.catchUpIfDue(checkpoint: { await repo.checkpointForBackup() })
+            await UIApplication.shared.endBackgroundTask(task)
         }
     }
 
@@ -355,6 +368,7 @@ struct StrandiOSApp: App {
         // safe no-op until the user opts in.
         .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .active {
+                Self.backUpIfDue(model.repo)
                 CoachBriefScheduler.activateIfEnabled { await model.coach.generateBrief() }
                 model.drainPendingIntents(router: router)
                 // iOS starts a Lift Log banner only for an app on screen, so a banner lost while NOOP was in

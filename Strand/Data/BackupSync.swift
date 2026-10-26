@@ -66,6 +66,38 @@ enum BackupSync {
 
     static func isSnapshot(_ name: String) -> Bool { snapshotTimeMs(name) != nil }
 
+    // MARK: - nikhil/custom: twice-daily slots
+
+    /// Local hours the auto-backup aims for. A backup is due once one of these has passed since the
+    /// last successful one; the app checks after every strap sync and on every open, so it lands
+    /// shortly after each slot whenever NOOP is running.
+    static let slotHours = [12, 19]
+
+    /// The most recent slot instant at or before `now` (today's or yesterday's).
+    static func latestSlot(atOrBefore now: Date, hours: [Int] = slotHours,
+                           calendar: Calendar = .current) -> Date? {
+        let today = calendar.startOfDay(for: now)
+        var best: Date?
+        for offset in [0, -1] {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: today) else { continue }
+            for h in hours {
+                guard let t = calendar.date(bySettingHour: h, minute: 0, second: 0, of: day), t <= now else { continue }
+                if best.map({ t > $0 }) ?? true { best = t }
+            }
+        }
+        return best
+    }
+
+    /// True when a slot has passed since `lastBackupMs` (0 = never backed up, always due).
+    static func isSlotDue(lastBackupMs: Int, now: Date, hours: [Int] = slotHours,
+                          calendar: Calendar = .current) -> Bool {
+        guard let slot = latestSlot(atOrBefore: now, hours: hours, calendar: calendar) else { return false }
+        return Double(lastBackupMs) / 1000.0 < slot.timeIntervalSince1970
+    }
+
+    /// Suffix for a snapshot still being written. Not `.noopbak`, so restore/prune never see it.
+    static let partialSuffix = ".partial"
+
     /// Any `.noopbak` file, whatever it's named. The RESTORE list uses this (not `isSnapshot`) so a
     /// hand-named backup like `noop-backup-2026-06-30.noopbak` still shows (#852). Case-insensitive on
     /// the extension so `.NOOPBAK` copied off another device still counts. Prune/latest stay strict on
@@ -159,7 +191,6 @@ enum FolderBackup {
         }
         set { UserDefaults.standard.set(min(max(newValue, 1), 100), forKey: keepKey) }
     }
-    private static let dayMs = 24 * 60 * 60 * 1000
 
     // MARK: - Persisted state
 
@@ -306,7 +337,16 @@ enum FolderBackup {
         defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
 
         let nowMs = Int(Date().timeIntervalSince1970 * 1000.0)
-        let dest = folder.appendingPathComponent(BackupSync.snapshotName(nowMs))
+        let final = folder.appendingPathComponent(BackupSync.snapshotName(nowMs))
+        // nikhil/custom: write under a `.partial` name and rename when verified, so a background run that
+        // iOS cuts off can never leave a torn file that the restore list would offer first. Leftovers
+        // from such a run are swept here.
+        let fm = FileManager.default
+        for name in (try? fm.contentsOfDirectory(atPath: folder.path)) ?? []
+        where name.hasPrefix(BackupSync.prefix) && name.hasSuffix(BackupSync.partialSuffix) {
+            try? fm.removeItem(at: folder.appendingPathComponent(name))
+        }
+        let dest = folder.appendingPathComponent(final.lastPathComponent + BackupSync.partialSuffix)
         // #1807: an oversize write still WROTE the file, so it is a success here. The folder sync has
         // nowhere to surface a warning and must not report failure for a backup that exists — the
         // interactive export is where the user is told, because that is where they can act on it.
@@ -322,6 +362,13 @@ enum FolderBackup {
             // run writes another. (A torn file already deleted itself; this covers the rest.)
             // Twin of the Android FolderBackup delete.
             try? FileManager.default.removeItem(at: dest)
+            return false
+        }
+        do {
+            if fm.fileExists(atPath: final.path) { try fm.removeItem(at: final) }
+            try fm.moveItem(at: dest, to: final)
+        } catch {
+            try? fm.removeItem(at: dest)
             return false
         }
 
@@ -345,9 +392,24 @@ enum FolderBackup {
     /// this off the launch-critical path; it does no UI work and is safe to run after the first refresh.
     static func catchUpIfDue(checkpoint: @escaping () async -> Bool) async {
         guard autoEnabled, hasFolder else { return }
-        let nowMs = Int(Date().timeIntervalSince1970 * 1000.0)
-        guard nowMs - lastBackupMs >= dayMs else { return }
+        // nikhil/custom: due once a noon / 7 pm slot has passed since the last backup (was: 24 h).
+        guard BackupSync.isSlotDue(lastBackupMs: lastBackupMs, now: Date()) else { return }
+        // One run at a time: launch, foreground and post-sync triggers can coincide.
+        guard claimRun() else { return }
+        defer { releaseRun() }
         await backupNow(checkpoint: checkpoint)
+    }
+
+    private static let runLock = NSLock()
+    nonisolated(unsafe) private static var running = false
+    private static func claimRun() -> Bool {
+        runLock.lock(); defer { runLock.unlock() }
+        if running { return false }
+        running = true
+        return true
+    }
+    private static func releaseRun() {
+        runLock.lock(); running = false; runLock.unlock()
     }
 
     /// Diagnostic-only snapshot of the restore list's health: the chosen folder's name, its raw entry

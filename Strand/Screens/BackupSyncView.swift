@@ -108,9 +108,9 @@ struct BackupSyncView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .center, spacing: 16) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Daily auto-backup")
+                        Text(verbatim: "Twice-daily auto-backup")
                             .font(StrandFont.body).foregroundStyle(StrandPalette.textPrimary)
-                        Text("Backs up to your folder about once a day and keeps the latest \(keep). On this platform it runs when you next open NOOP.")
+                        Text(verbatim: "Backs up to your folder shortly after 12:00 and 19:00 (after the next strap sync, or when you open NOOP) and keeps the latest \(keep).")
                             .font(StrandFont.footnote).foregroundStyle(StrandPalette.textTertiary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
