@@ -1040,6 +1040,19 @@ final class HealthKitBridge: ObservableObject {
         }
         guard !candidates.isEmpty || !retracted.isEmpty else { return }
 
+        // nikhil/custom (battery): only re-delete/re-save keys whose value or stamp changed since the last
+        // successful pass; a retraction is remembered too, so it is issued once rather than every pass.
+        var fingerprints: [String: String] = [:]
+        for c in candidates {
+            let q = c.sample.quantity.description
+            fingerprints[c.key] = HealthWriteDiff.fnv1a("\(c.type.identifier)|\(q)|\(Int(c.sample.startDate.timeIntervalSince1970))")
+        }
+        for (type, keys) in retracted { for k in keys { fingerprints[k] = "retracted:\(type.identifier)" } }
+        let changedKeys = Set(HealthWriteDiff.changedKeys(current: fingerprints, previous: HealthWriteDiff.load("vitals")))
+        guard !changedKeys.isEmpty else { return }
+        candidates = candidates.filter { changedKeys.contains($0.key) }
+        retracted = retracted.mapValues { $0.filter { changedKeys.contains($0) } }
+
         // Delete any of OUR prior samples that carry the same metadata keys, then write the fresh
         // batch. Scoped to HKSource.default() so we never touch a sample written by another app
         // that happens to use the same external UUID. Delete failures are non-fatal (e.g., nothing
@@ -1047,15 +1060,15 @@ final class HealthKitBridge: ObservableObject {
         let bySource = HKQuery.predicateForObjects(from: HKSource.default())
         var keysByType = Dictionary(grouping: candidates, by: { $0.type }).mapValues { $0.map { $0.key } }
         for (type, keys) in retracted { keysByType[type, default: []] += keys }
-        for (type, allKeys) in keysByType {
+        for (type, allKeys) in keysByType where !allKeys.isEmpty {
             let keys = Array(Set(allKeys))
             let byKey = HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID,
                                                     allowedValues: keys)
             let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [bySource, byKey])
             _ = try? await self.store.deleteObjects(of: type, predicate: pred)
         }
-        guard !candidates.isEmpty else { return }
-        try await self.store.save(candidates.map { $0.sample })
+        if !candidates.isEmpty { try await self.store.save(candidates.map { $0.sample }) }
+        HealthWriteDiff.save(fingerprints, "vitals")
     }
 
     /// Write each BRIDGED NIGHT (#364) as one `.inBed` sample plus one category sample per stage
@@ -1088,10 +1101,18 @@ final class HealthKitBridge: ObservableObject {
             }
         var samples: [HKCategorySample] = []
         var keys: [String] = []
+        // nikhil/custom (battery): fingerprint each night and rewrite only the nights that changed.
+        let previous = HealthWriteDiff.load("sleep")
+        var fingerprints: [String: String] = [:]
         for entry in HealthWriteback.mergedSleepPlan(groups: groups) {
             let key = HealthWriteback.appleHealthSleepKey(startTs: entry.keyStartTs)
+            let allKeys = entry.allKeyStartTs.map { HealthWriteback.appleHealthSleepKey(startTs: $0) }
+            let fp = HealthWriteDiff.fnv1a(allKeys.joined(separator: ",") + "|\(entry.spanStart)-\(entry.spanEnd)|"
+                + entry.intervals.map { "\($0.kind):\($0.start)-\($0.end)" }.joined(separator: ";"))
+            fingerprints[key] = fp
+            guard previous[key] != fp else { continue }
             let meta = [HKMetadataKeyExternalUUID: key]
-            keys.append(contentsOf: entry.allKeyStartTs.map { HealthWriteback.appleHealthSleepKey(startTs: $0) })
+            keys.append(contentsOf: allKeys)
             samples.append(HKCategorySample(type: type, value: HKCategoryValueSleepAnalysis.inBed.rawValue,
                                             start: Date(timeIntervalSince1970: TimeInterval(entry.spanStart)),
                                             end: Date(timeIntervalSince1970: TimeInterval(entry.spanEnd)),
@@ -1112,13 +1133,14 @@ final class HealthKitBridge: ObservableObject {
                     metadata: meta))
             }
         }
-        guard !samples.isEmpty else { return }
+        guard !samples.isEmpty else { HealthWriteDiff.save(fingerprints, "sleep"); return }
         let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
             HKQuery.predicateForObjects(from: HKSource.default()),
             HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID, allowedValues: keys),
         ])
         _ = try? await store.deleteObjects(of: type, predicate: pred)
         try await store.save(samples)
+        HealthWriteDiff.save(fingerprints, "sleep")
     }
 
     /// UserDefaults key for the HR write cursor (the newest bucket ts we've written). Per-strap so a
@@ -1142,17 +1164,31 @@ final class HealthKitBridge: ObservableObject {
         let windowStart = cursor > 0 ? max(fromTs, cursor - 48 * 3600) : fromTs
         // Use the same active/registered/canonical union as the charts (#2644). Re-pairing
         // banks HR under a registry id, so reading only `noopDeviceId` silently misses it.
-        let buckets = await repo.hrBuckets(from: windowStart, to: nowTs, bucketSeconds: 60)
-        guard !buckets.isEmpty else { return }
+        let allBuckets = await repo.hrBuckets(from: windowStart, to: nowTs, bucketSeconds: 60)
+        guard !allBuckets.isEmpty else { return }
 
-        let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            HKQuery.predicateForObjects(from: HKSource.default()),
-            HKQuery.predicateForSamples(withStart: Date(timeIntervalSince1970: TimeInterval(windowStart)),
-                                        end: Date(timeIntervalSince1970: TimeInterval(nowTs) + 60),
-                                        options: []),
-        ])
-        _ = try? await store.deleteObjects(of: type, predicate: pred)
+        // nikhil/custom (battery): rewrite only the HOURS whose buckets changed since the last successful
+        // pass — usually just the current hour — instead of deleting and re-saving all ~2,880 samples of
+        // the 48 h window every pass. Late offloads still reconcile: their hours fingerprint differently.
+        let fpName = "hr.\(noopDeviceId)"
+        let previous = Dictionary(uniqueKeysWithValues: HealthWriteDiff.load(fpName).compactMap { k, v in
+            Int(k).map { ($0, v) }
+        })
+        let current = HealthWriteDiff.hourFingerprints(allBuckets.map { ($0.ts, $0.bpm) })
+        let changed = HealthWriteDiff.changedHours(current: current, previous: previous, windowStart: windowStart)
+        guard !changed.isEmpty else { return }
+        let changedSet = Set(changed)
+        let buckets = allBuckets.filter { changedSet.contains(HealthWriteDiff.hourStart($0.ts)) }
 
+        for r in HealthWriteDiff.ranges(ofHours: changed) {
+            let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
+                HKQuery.predicateForObjects(from: HKSource.default()),
+                HKQuery.predicateForSamples(withStart: Date(timeIntervalSince1970: TimeInterval(r.start)),
+                                            end: Date(timeIntervalSince1970: TimeInterval(r.end)),
+                                            options: .strictStartDate),
+            ])
+            _ = try? await store.deleteObjects(of: type, predicate: pred)
+        }
         let unit = HKUnit.count().unitDivided(by: .minute())
         var samples: [HKQuantitySample] = []
         samples.reserveCapacity(buckets.count)
@@ -1179,6 +1215,10 @@ final class HealthKitBridge: ObservableObject {
             lastSaved = max(lastSaved, chunkTs.last ?? lastSaved)
             UserDefaults.standard.set(lastSaved, forKey: hrWriteCursorKey)
         }
+        // Every changed hour saved; remember the window's fingerprints (older hours age out).
+        var stored = previous.filter { $0.key >= HealthWriteDiff.hourStart(windowStart) }
+        for h in changed { stored[h] = current[h] }
+        HealthWriteDiff.save(Dictionary(uniqueKeysWithValues: stored.map { (String($0.key), $0.value) }), fpName)
     }
 
     /// Write strap-detected and manual workouts into Health via `HKWorkoutBuilder`, with an
@@ -1290,20 +1330,33 @@ final class HealthKitBridge: ObservableObject {
         //
         // Runs BEFORE the empty-rows return: a window whose last workout was deleted in the app is the
         // case where every Health copy is an orphan, and returning early would leave all of them.
-        if mineRead != nil, computedRead != nil,
-           mine.count < Self.workoutReadLimit, computed.count < Self.workoutReadLimit {
+        // nikhil/custom (battery): fingerprint each workout; rebuild only new/changed ones, and run the
+        // orphan reconciliation (a Health read) only when the set of workouts actually changed.
+        let previous = HealthWriteDiff.load("workouts")
+        var fingerprints: [String: String] = [:]
+        for row in rows {
+            fingerprints[key(row)] = HealthWriteDiff.fnv1a(
+                "\(row.startTs)-\(row.endTs)|\(row.sport)|\(row.energyKcal ?? -1)|\(row.distanceM ?? -1)")
+        }
+        let readComplete = mineRead != nil && computedRead != nil
+            && mine.count < Self.workoutReadLimit && computed.count < Self.workoutReadLimit
+        if readComplete, Set(fingerprints.keys) != Set(previous.keys) {
             await deleteOrphanedWorkouts(fromTs: fromTs, toTs: toTs, keeping: Set(rows.map(key)))
         }
+        let changed = Set(HealthWriteDiff.changedKeys(current: fingerprints, previous: previous))
+        let toWrite = rows.filter { changed.contains(key($0)) }
+        // Remembered only after every rebuild succeeded, and never from a truncated or failed read.
+        func remember() { if readComplete { HealthWriteDiff.save(fingerprints, "workouts") } }
 
-        guard !rows.isEmpty else { return }
+        guard !toWrite.isEmpty else { remember(); return }
         let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
             HKQuery.predicateForObjects(from: HKSource.default()),
             HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID,
-                                        allowedValues: rows.map(key)),
+                                        allowedValues: toWrite.map(key)),
         ])
         _ = try? await store.deleteObjects(of: .workoutType(), predicate: pred)
 
-        for row in rows {
+        for row in toWrite {
             let start = Date(timeIntervalSince1970: TimeInterval(row.startTs))
             let end = Date(timeIntervalSince1970: TimeInterval(row.endTs))
             guard end > start else { continue }
@@ -1362,6 +1415,7 @@ final class HealthKitBridge: ObservableObject {
                 throw error
             }
         }
+        remember()
     }
 
     /// Reverse of `sportName`: NOOP's sport label → the `HKWorkoutActivityType` written to Health.
