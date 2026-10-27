@@ -738,6 +738,8 @@ final class AICoachEngine: ObservableObject {
     /// in-memory transcript (what the user sees) is unaffected either way.
     private func persistMessages() {
         let snapshot = messages
+        // nikhil/custom: also keep a permanent per-day archive (and a daily S3 upload) of the chat.
+        CoachChatLog.record(snapshot.map { ($0.id.uuidString, $0.role.rawValue, $0.text) })
         let providerId = provider.rawValue
         Task {
             guard let store = await repo.storeHandle() else { return }

@@ -194,6 +194,7 @@ struct StrandiOSApp: App {
         Task.detached(priority: .utility) {
             let task = await UIApplication.shared.beginBackgroundTask(withName: "noop-folder-backup", expirationHandler: nil)
             await FolderBackup.catchUpIfDue(checkpoint: { await repo.checkpointForBackup() })
+            await CoachChatLog.uploadIfDue()
             await UIApplication.shared.endBackgroundTask(task)
         }
     }
