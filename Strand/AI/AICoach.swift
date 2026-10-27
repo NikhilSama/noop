@@ -299,20 +299,55 @@ final class AICoachEngine: ObservableObject {
     }
 
     /// nikhil/custom: what each request actually sends, the active prompt (default or the user's edit) plus
-    /// an optional machine-local addendum. The addendum is a bundled `CoachPromptAddendum.local.txt` (put it
-    /// under `Strand/AI/`, kept out of git via `.git/info/exclude`; xcodegen bundles it when present). It is
-    /// appended to whichever prompt is active and never shown in, or saved from, the prompt editor.
+    /// an optional addendum. The addendum source is a bundled `CoachPromptAddendum.local.txt` (put it under
+    /// `Strand/AI/`, kept out of git via `.git/info/exclude`; xcodegen bundles it when present). When that file
+    /// holds an https URL, the addendum text is fetched from it at run time (see `refreshPromptAddendum`), so
+    /// it can change without a rebuild; any other content is used as the addendum text itself. It is appended
+    /// to whichever prompt is active and never shown in, or saved from, the prompt editor.
     var requestSystemPrompt: String {
         guard let addendum = Self.promptAddendum else { return systemPrompt }
         return systemPrompt + "\n" + addendum
     }
 
-    static let promptAddendum: String? = {
+    private static let promptAddendumSource: String? = {
         guard let url = Bundle.main.url(forResource: "CoachPromptAddendum.local", withExtension: "txt"),
               let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }()
+
+    private static var promptAddendumURL: URL? {
+        guard let src = promptAddendumSource, !src.contains(where: \.isNewline),
+              let url = URL(string: src), url.scheme?.lowercased() == "https" else { return nil }
+        return url
+    }
+
+    /// Last successfully fetched remote addendum, persisted so an offline request still carries it.
+    private static let promptAddendumCacheKey = "custom.coach.promptAddendum.cache"
+    private static var promptAddendumFetchedAt: Date?
+    /// How long a fetched addendum is reused before the next request re-fetches it.
+    private static let promptAddendumMaxAge: TimeInterval = 300
+
+    static var promptAddendum: String? {
+        guard let src = promptAddendumSource else { return nil }
+        guard promptAddendumURL != nil else { return src }
+        let cached = UserDefaults.standard.string(forKey: promptAddendumCacheKey)
+        return (cached?.isEmpty ?? true) ? nil : cached
+    }
+
+    /// Re-fetch the remote addendum when it is older than `promptAddendumMaxAge`. A failed fetch keeps the
+    /// last good copy; an empty 200 response clears it (so blanking the remote file switches it off).
+    static func refreshPromptAddendum() async {
+        guard let url = promptAddendumURL else { return }
+        if let at = promptAddendumFetchedAt, Date().timeIntervalSince(at) < promptAddendumMaxAge { return }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
+        request.httpMethod = "GET"
+        guard let (data, response) = try? await URLSession(configuration: .ephemeral).data(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              data.count <= 32_768, let text = String(data: data, encoding: .utf8) else { return }
+        UserDefaults.standard.set(text.trimmingCharacters(in: .whitespacesAndNewlines), forKey: promptAddendumCacheKey)
+        promptAddendumFetchedAt = Date()
+    }
 
     /// The user's stored prompt override, or the default when nothing custom is set. The UI binds its
     /// editor to this: writing persists the override; writing a blank string clears it (back to default).
@@ -1061,7 +1096,8 @@ final class AICoachEngine: ObservableObject {
     /// Dispatch to the user's chosen provider client.
     private func callProvider(key: String,
                               messages: [(role: ChatMessage.Role, content: String)]) async throws -> String {
-        try await provider.client.send(
+        await Self.refreshPromptAddendum()
+        return try await provider.client.send(
             key: key,
             model: model,
             systemPrompt: requestSystemPrompt,
@@ -1078,6 +1114,7 @@ final class AICoachEngine: ObservableObject {
                                 messages: [(role: ChatMessage.Role, content: String)],
                                 inlineImage: String? = nil,
                                 onDelta: (String) -> Void) async throws {
+        await Self.refreshPromptAddendum()
         try await provider.client.streamWithImage(
             key: key,
             model: model,
