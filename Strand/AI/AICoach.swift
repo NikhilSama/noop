@@ -298,6 +298,22 @@ final class AICoachEngine: ObservableObject {
         return Self.defaultSystemPrompt
     }
 
+    /// nikhil/custom: what each request actually sends, the active prompt (default or the user's edit) plus
+    /// an optional machine-local addendum. The addendum is a bundled `CoachPromptAddendum.local.txt` (put it
+    /// under `Strand/AI/`, kept out of git via `.git/info/exclude`; xcodegen bundles it when present). It is
+    /// appended to whichever prompt is active and never shown in, or saved from, the prompt editor.
+    var requestSystemPrompt: String {
+        guard let addendum = Self.promptAddendum else { return systemPrompt }
+        return systemPrompt + "\n" + addendum
+    }
+
+    static let promptAddendum: String? = {
+        guard let url = Bundle.main.url(forResource: "CoachPromptAddendum.local", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }()
+
     /// The user's stored prompt override, or the default when nothing custom is set. The UI binds its
     /// editor to this: writing persists the override; writing a blank string clears it (back to default).
     var customSystemPrompt: String {
@@ -350,7 +366,7 @@ final class AICoachEngine: ObservableObject {
         // Estimate the context size: system prompt + data context (rough — we don't build the
         // full context here to avoid a DB read on every keystroke). Use the last known context
         // size or a reasonable default.
-        let systemPromptTokens = systemPrompt.count / 4
+        let systemPromptTokens = requestSystemPrompt.count / 4
         // The data context is typically ~2000-4000 chars depending on the user's data.
         // Use a conservative estimate of 3000 chars (750 tokens) when consent is on.
         let contextTokens = dataConsent ? 750 : 50
@@ -1048,7 +1064,7 @@ final class AICoachEngine: ObservableObject {
         try await provider.client.send(
             key: key,
             model: model,
-            systemPrompt: systemPrompt,
+            systemPrompt: requestSystemPrompt,
             messages: messages,
             session: session
         )
@@ -1065,7 +1081,7 @@ final class AICoachEngine: ObservableObject {
         try await provider.client.streamWithImage(
             key: key,
             model: model,
-            systemPrompt: systemPrompt,
+            systemPrompt: requestSystemPrompt,
             messages: messages,
             inlineImage: inlineImage,
             session: session,
