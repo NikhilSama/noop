@@ -591,7 +591,7 @@ struct CoachView: View {
     private var typingIndicator: some View {
         HStack(spacing: 8) {
             ProgressView().controlSize(.small).tint(StrandPalette.accent)
-            Text("Coach is thinking…")
+            Text(coach.toolStatus.map { LocalizedStringKey($0) } ?? "Coach is thinking…")
                 .font(StrandFont.subhead)
                 .foregroundStyle(StrandPalette.textSecondary)
             Spacer(minLength: 0)

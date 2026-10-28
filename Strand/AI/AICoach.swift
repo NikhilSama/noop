@@ -168,6 +168,8 @@ final class AICoachEngine: ObservableObject {
     /// boundary in `send` — see `isStaleConversation`. Kotlin twin: `CoachViewModel.conversationDay`.
     private var conversationDay: Int?
     @Published var sending = false
+    /// nikhil/custom: what the coach is doing while it uses a tool ("Searching the web…"), else nil.
+    @Published var toolStatus: String?
     @Published var errorText: String?
 
     /// Whether the last failure was the provider turning the stored key away, as opposed to a rate
@@ -1159,6 +1161,22 @@ final class AICoachEngine: ObservableObject {
                                 inlineImage: String? = nil,
                                 onDelta: (String) -> Void) async throws {
         await Self.preparePromptAddendum()
+        // nikhil/custom: on Anthropic, let the coach search the web and query NOOP's own data mid-answer.
+        if provider == .anthropic, inlineImage == nil, CoachTools.enabled,
+           let anthropic = provider.client as? AnthropicClient {
+            let repo = self.repo
+            defer { toolStatus = nil }
+            try await anthropic.streamWithTools(
+                key: key, model: model,
+                systemPrompt: requestSystemPrompt + "\n" + CoachTools.promptNote(),
+                messages: messages,
+                tools: CoachTools.anthropicTools(model: model),
+                runTool: { name, input in await CoachTools.run(name: name, input: input, repo: repo) },
+                onStatus: { [weak self] line in self?.toolStatus = line },
+                session: session,
+                onDelta: onDelta)
+            return
+        }
         try await provider.client.streamWithImage(
             key: key,
             model: model,
