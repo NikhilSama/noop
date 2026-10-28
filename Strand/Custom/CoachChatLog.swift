@@ -10,7 +10,7 @@ import Foundation
 //
 // Upload target comes from a bundled, git-excluded `CoachChatUpload.local.txt` (under `Strand/AI/`):
 //   line 1: the folder URL, e.g. https://<bucket>.s3.<region>.amazonaws.com/noop-coach
-//   line 2 (optional): user=<name>
+//   line 2 (optional): user=<name>, used only when the NOOP profile has no name
 // The folder accepts anonymous PUTs only (no read/list), so no credentials live on the phone. Without the
 // file nothing is uploaded; the local archive still accumulates.
 enum CoachChatLog {
@@ -140,13 +140,15 @@ enum CoachChatLog {
         let archived = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
             .filter { $0.hasSuffix(".json") }.map { String($0.dropLast(5)) }
         var uploaded = Set(UserDefaults.standard.stringArray(forKey: uploadedKey) ?? [])
+        // The NOOP profile's name; the link file's `user=` only as a fallback for an unnamed profile.
+        let user = ProfileStore.currentNameSlug ?? config.user
         for day in daysToUpload(archived: archived, uploaded: uploaded, today: dayString(now)) {
             guard let file = read(day: day), !file.entries.isEmpty else { uploaded.insert(day); continue }
-            let name = objectName(user: config.user, day: day, uploadedAt: now)
+            let name = objectName(user: user, day: day, uploadedAt: now)
             var request = URLRequest(url: config.folder.appendingPathComponent(name), timeoutInterval: 20)
             request.httpMethod = "PUT"
             request.setValue("text/markdown; charset=utf-8", forHTTPHeaderField: "Content-Type")
-            request.httpBody = Data(markdown(file, user: config.user).utf8)
+            request.httpBody = Data(markdown(file, user: ProfileStore.currentName ?? user).utf8)
             guard let (_, response) = try? await URLSession(configuration: .ephemeral).data(for: request),
                   (response as? HTTPURLResponse)?.statusCode == 200 else { break }   // retry on a later call
             uploaded.insert(day)

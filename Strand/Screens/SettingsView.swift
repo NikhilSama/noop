@@ -369,6 +369,14 @@ struct SettingsView: View {
             VStack(spacing: 0) {
                 profilePhotoRow
                 rowDivider
+                // nikhil/custom: the name the AI Coach's per-user addendum and chat log are keyed by.
+                FormRow(label: "Name") {
+                    TextField("Name", text: $profile.name)
+                        .multilineTextAlignment(.trailing)
+                        .font(StrandFont.body)
+                        .foregroundStyle(StrandPalette.textPrimary)
+                }
+                rowDivider
                 FormRow(label: "Date of birth") {
                     HStack(spacing: 12) {
                         Text("\(profile.age)")

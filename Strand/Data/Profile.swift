@@ -19,6 +19,19 @@ final class ProfileStore: ObservableObject {
             d.set(age, forKey: K.legacyAge)
         }
     }
+    /// nikhil/custom: the user's name. Local only (not in the `.noopbak` whitelist); used by the AI Coach's
+    /// per-user addendum and chat-log upload (`ProfileStore.currentName`).
+    @Published var name: String { didSet { d.set(name, forKey: Self.nameKey) } }
+    nonisolated static let nameKey = "profile.name"
+    /// The stored name, trimmed, for code with no ProfileStore at hand. Nil when unset.
+    nonisolated static var currentName: String? {
+        let n = UserDefaults.standard.string(forKey: nameKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return n.isEmpty ? nil : n
+    }
+    /// A file-name-safe form of `currentName`: lowercase letters and digits only.
+    nonisolated static var currentNameSlug: String? {
+        currentName.map { $0.lowercased().filter { $0.isLetter || $0.isNumber } }.flatMap { $0.isEmpty ? nil : $0 }
+    }
     @Published var sex: String { didSet { d.set(sex, forKey: K.sex) } }          // "male" | "female" | "nonbinary"
     @Published var weightKg: Double { didSet { d.set(weightKg, forKey: K.weight) } }
     @Published var heightCm: Double { didSet { d.set(heightCm, forKey: K.height) } }
@@ -122,6 +135,7 @@ final class ProfileStore: ObservableObject {
         d.set(resolvedDOB, forKey: K.dateOfBirth)
         d.set(Self.years(from: resolvedDOB, to: Date()), forKey: K.legacyAge)
         sex = d.string(forKey: K.sex) ?? "male"
+        name = d.string(forKey: Self.nameKey) ?? ""
         weightKg = d.object(forKey: K.weight) as? Double ?? 75
         heightCm = d.object(forKey: K.height) as? Double ?? 178
         waistCm = d.object(forKey: K.waist) as? Double ?? 0

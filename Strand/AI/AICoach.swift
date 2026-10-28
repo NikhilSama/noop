@@ -316,36 +316,60 @@ final class AICoachEngine: ObservableObject {
         return trimmed.isEmpty ? nil : trimmed
     }()
 
+    /// The addendum URL. A `{user}` in it is replaced by the NOOP profile's name (lowercase letters and
+    /// digits), so each person gets their own addendum file; with no profile name it stays unresolved.
     private static var promptAddendumURL: URL? {
-        guard let src = promptAddendumSource, !src.contains(where: \.isNewline),
-              let url = URL(string: src), url.scheme?.lowercased() == "https" else { return nil }
+        guard var src = promptAddendumSource, !src.contains(where: \.isNewline) else { return nil }
+        if src.contains("{user}") {
+            guard let user = ProfileStore.currentNameSlug else { return nil }
+            src = src.replacingOccurrences(of: "{user}", with: user)
+        }
+        guard let url = URL(string: src), url.scheme?.lowercased() == "https" else { return nil }
         return url
     }
 
     /// Last successfully fetched remote addendum, persisted so an offline request still carries it.
     private static let promptAddendumCacheKey = "custom.coach.promptAddendum.cache"
     private static var promptAddendumFetchedAt: Date?
+    /// The URL the cache was fetched from, so a renamed profile re-fetches instead of reusing another's.
+    private static let promptAddendumCacheURLKey = "custom.coach.promptAddendum.cacheURL"
     /// How long a fetched addendum is reused before the next request re-fetches it.
     private static let promptAddendumMaxAge: TimeInterval = 300
 
     static var promptAddendum: String? {
         guard let src = promptAddendumSource else { return nil }
-        guard promptAddendumURL != nil else { return src }
-        let cached = UserDefaults.standard.string(forKey: promptAddendumCacheKey)
-        return (cached?.isEmpty ?? true) ? nil : cached
+        // Plain text (not a URL) is the addendum itself.
+        guard src.lowercased().hasPrefix("https://") else { return src }
+        let d = UserDefaults.standard
+        guard let url = promptAddendumURL, d.string(forKey: promptAddendumCacheURLKey) == url.absoluteString,
+              let cached = d.string(forKey: promptAddendumCacheKey), !cached.isEmpty else { return nil }
+        return cached
     }
 
-    /// Re-fetch the remote addendum when it is older than `promptAddendumMaxAge`. A failed fetch keeps the
-    /// last good copy; an empty 200 response clears it (so blanking the remote file switches it off).
+    /// Re-fetch the remote addendum when it is older than `promptAddendumMaxAge` (or the URL changed, e.g. a
+    /// renamed profile). A network failure keeps the last good copy; an empty file, or none for this user
+    /// (S3 answers 403/404), means no addendum.
     static func refreshPromptAddendum() async {
         guard let url = promptAddendumURL else { return }
-        if let at = promptAddendumFetchedAt, Date().timeIntervalSince(at) < promptAddendumMaxAge { return }
+        let d = UserDefaults.standard
+        let sameURL = d.string(forKey: promptAddendumCacheURLKey) == url.absoluteString
+        if sameURL, let at = promptAddendumFetchedAt, Date().timeIntervalSince(at) < promptAddendumMaxAge { return }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
         request.httpMethod = "GET"
         guard let (data, response) = try? await URLSession(configuration: .ephemeral).data(for: request),
-              let http = response as? HTTPURLResponse, http.statusCode == 200,
-              data.count <= 32_768, let text = String(data: data, encoding: .utf8) else { return }
-        UserDefaults.standard.set(text.trimmingCharacters(in: .whitespacesAndNewlines), forKey: promptAddendumCacheKey)
+              let http = response as? HTTPURLResponse else { return }
+        let text: String
+        switch http.statusCode {
+        case 200:
+            guard data.count <= 32_768, let body = String(data: data, encoding: .utf8) else { return }
+            text = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        case 403, 404:
+            text = ""
+        default:
+            return
+        }
+        d.set(text, forKey: promptAddendumCacheKey)
+        d.set(url.absoluteString, forKey: promptAddendumCacheURLKey)
         promptAddendumFetchedAt = Date()
     }
 
