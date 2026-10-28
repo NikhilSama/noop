@@ -293,8 +293,12 @@ final class HealthKitBridge: ObservableObject {
     /// these plus sleep and workouts; this list is not the whole observed set.
     /// We deliberately do NOT observe the body-composition reads (weight/BMI/etc.) — those don't move a
     /// score and a manual weigh-in shouldn't wake the app every hour.
+    // nikhil/custom (battery): no background-delivery observers for `.heartRate` / `.activeEnergyBurned`.
+    // A worn Apple Watch writes both continuously, so each woke NOOP every hour all day; they are still
+    // READ (quantityReadIds) by every foreground / post-sync pass, just not observed. This also lets the
+    // Watch app hold heart-rate read access (for its live workout readout) without costing phone battery.
     private static let liveQuantityIds: [HKQuantityTypeIdentifier] = [
-        .heartRateVariabilitySDNN, .restingHeartRate, .activeEnergyBurned, .heartRate, .vo2Max
+        .heartRateVariabilitySDNN, .restingHeartRate, .vo2Max
     ]
 
     /// Long-lived observer queries, retained so HealthKit doesn't tear them down. Keyed by the sample
@@ -308,6 +312,13 @@ final class HealthKitBridge: ObservableObject {
     /// `auth == .authorized`; safe to call from several entry points.
     func enableLiveDelivery() {
         guard auth == .authorized, HKHealthStore.isHealthDataAvailable() else { return }
+        // nikhil/custom (battery): background delivery persists in HealthKit across launches, so switch it
+        // off for the types this build no longer observes (see `liveQuantityIds`).
+        for id in [HKQuantityTypeIdentifier.heartRate, .activeEnergyBurned] {
+            if let t = HKObjectType.quantityType(forIdentifier: id) {
+                store.disableBackgroundDelivery(for: t) { _, _ in }
+            }
+        }
 
         var types: [HKSampleType] = []
         for id in HealthKitBridge.liveQuantityIds {
