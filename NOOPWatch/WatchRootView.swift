@@ -16,11 +16,13 @@ struct WatchRootView: View {
     var body: some View {
         TabView(selection: $page) {
             WatchGlanceView().tag(0)
+            WatchLiftView().tag(4)
             WatchBreatheView().tag(1)
             WatchWorkoutView().tag(2)
             WatchIntervalView().tag(3)
         }
-        .onChange(of: workout.phoneStartCount) { _, _ in page = 2 }
+        // A phone Lift Log started the workout: show the Lift Log screen (time + HR + current set).
+        .onChange(of: workout.phoneStartCount) { _, _ in page = 4 }
         // watchOS page TabView shows the page-indicator dots by default; the iOS background-display-mode
         // customisation is unavailable here, so the plain page style is the right call.
         .tabViewStyle(.page)

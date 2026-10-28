@@ -268,7 +268,20 @@ extension WatchSessionBridge: WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
-        _ = Self.handleStrapBuzz(message)
+        if Self.handleStrapBuzz(message) { return }
+        _ = Self.handleLiftAction(message)
+    }
+
+    /// nikhil/custom: the watch Lift Log screen's button (set by the iOS app).
+    @MainActor static var onLiftAction: ((LiftWatchAction) -> Void)?
+    /// nikhil/custom: the current Lift Log state for the watch, as a message payload.
+    @MainActor static var liftStateProvider: (() -> [String: Any])?
+
+    nonisolated private static func handleLiftAction(_ message: [String: Any]) -> Bool {
+        guard let data = message[LiftWatchAction.messageKey] as? Data,
+              let action = LiftWatchAction.decode(data) else { return false }
+        Task { @MainActor in onLiftAction?(action) }
+        return true
     }
 
     /// The watch's "send me the latest" request on launch. We re-mirror the last snapshot into the
@@ -277,8 +290,12 @@ extension WatchSessionBridge: WCSessionDelegate {
     nonisolated func session(_ session: WCSession,
                              didReceiveMessage message: [String: Any],
                              replyHandler: @escaping ([String: Any]) -> Void) {
-        if Self.handleStrapBuzz(message) {
+        if Self.handleStrapBuzz(message) || Self.handleLiftAction(message) {
             replyHandler([:])
+            return
+        }
+        if message[LiftWatchAction.requestKey] != nil {
+            Task { @MainActor in replyHandler(Self.liftStateProvider?() ?? [:]) }
             return
         }
         guard message[Self.requestLatestKey] != nil else {

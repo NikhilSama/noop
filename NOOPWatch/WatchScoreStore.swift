@@ -106,6 +106,7 @@ final class WatchScoreStore: NSObject, ObservableObject, WCSessionDelegate {
     // Sent as a message when the watch is reachable, otherwise queued as user info.
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         handleLiftEnd(message)
+        WatchLiftStore.shared.receive(message)
     }
 
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {

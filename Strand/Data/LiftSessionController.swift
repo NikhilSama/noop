@@ -140,6 +140,27 @@ final class LiftSessionController: ObservableObject {
         Self.onSessionStarted?()
     }
 
+    /// nikhil/custom: the watch Lift Log screen pressed its button for `slot` with these numbers. They become
+    /// the set's numbers, then the session advances exactly as the phone's big button would, but only if
+    /// the watch was looking at the set the session is actually on (a stale press does nothing).
+    func applyWatchAction(_ slot: LiftSlot, weightKg: Double?, reps: Int?) {
+        guard let engine, engine.planItem(for: slot) != nil else { return }
+        let entered = enteredValues(for: slot)
+        updateSet(slot, weightKg: weightKg, reps: reps, rpe: entered.rpe, isWarmup: isWarmup(slot))
+        switch engine.stage {
+        case .working(let current) where current == slot:
+            advance()
+        case .warmup, .resting:
+            if engine.upcomingSlot == slot || (engine.stage == .warmup && engine.nextPendingSlot == slot) {
+                advance()
+            } else {
+                start(slot)
+            }
+        default:
+            break
+        }
+    }
+
     /// nikhil/custom: set by the iOS app so a NEW Lift Log session also starts a strength workout on the
     /// Watch, and the end of the session (saved or discarded) ends it. Not fired for a resumed session.
     static var onSessionStarted: (() -> Void)?
