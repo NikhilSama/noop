@@ -1,6 +1,7 @@
 import SwiftUI
 import StrandDesign
 import WatchConnectivity
+import HealthKit
 
 // nikhil/custom — the watch Lift Log screen: a hybrid of the workout readout (session time + wrist heart
 // rate, from the HealthKit workout the phone's Lift Log started) and the Lift Log's current set.
@@ -74,8 +75,8 @@ struct WatchLiftView: View {
             }
         }
         .background(StrandPalette.surfaceBase.ignoresSafeArea())
-        .onAppear { lift.requestState() }
-        .onChange(of: lift.state) { _, new in adopt(new) }
+        .onAppear { lift.requestState(); ensureWorkout() }
+        .onChange(of: lift.state) { _, new in adopt(new); ensureWorkout() }
     }
 
     // MARK: Layout
@@ -83,6 +84,7 @@ struct WatchLiftView: View {
     private func session(_ s: LiftWatchState) -> some View {
         VStack(spacing: 4) {
             header
+            workoutStatus
             VStack(spacing: 0) {
                 Text(s.exercise)
                     .font(StrandFont.subhead)
@@ -120,6 +122,36 @@ struct WatchLiftView: View {
             .disabled(lift.sending)
         }
         .padding(.horizontal, 4)
+    }
+
+    /// If the phone's Lift Log is running but the watch workout is not (the launch was missed or failed),
+    /// start it here, so time, heart rate and the Health/Activity workout still happen.
+    private func ensureWorkout() {
+        guard let s = lift.state, s.stage != .finished, workout.phase == .idle else { return }
+        WatchDiag.log("lift screen: session running but workout idle; starting it")
+        let config = HKWorkoutConfiguration()
+        config.activityType = .traditionalStrengthTraining
+        config.locationType = .indoor
+        workout.startFromPhone(config)
+    }
+
+    /// Shown under the header when the watch workout is not recording, with the way to fix it.
+    @ViewBuilder private var workoutStatus: some View {
+        switch workout.phase {
+        case .active, .paused, .ending, .saved:
+            EmptyView()
+        case .denied, .unavailable:
+            Text("Health access off: Watch Settings → Health → NOOP")
+                .font(StrandFont.caption).foregroundStyle(StrandPalette.recoveryColor(0))
+                .lineLimit(2).multilineTextAlignment(.center)
+        case .requesting:
+            Text("Allow Health access to record")
+                .font(StrandFont.caption).foregroundStyle(StrandPalette.effortColor)
+        case .idle:
+            Button("Workout not recording — tap to start") { ensureWorkout() }
+                .font(StrandFont.caption).buttonStyle(.plain)
+                .foregroundStyle(StrandPalette.effortColor)
+        }
     }
 
     /// Session time and wrist heart rate, from the HealthKit workout.

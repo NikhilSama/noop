@@ -391,7 +391,8 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
         #if canImport(HealthKit) && os(watchOS)
         guard HKHealthStore.isHealthDataAvailable() else { phase = .unavailable; return }
         phase = .requesting
-        store.requestAuthorization(toShare: shareTypes, read: readTypes) { [weak self] _, _ in
+        store.requestAuthorization(toShare: shareTypes, read: readTypes) { [weak self] ok, error in
+            WatchDiag.log("requestAuthorization ok=\(ok) error=\(error?.localizedDescription ?? "none")")
             guard let self else { return }
             DispatchQueue.main.async {
                 // requestAuthorization's `granted` only reports whether the sheet was shown, not the user's
@@ -425,6 +426,7 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
     /// nikhil/custom: the phone launched NOOP with a workout configuration (a Lift Log session started).
     /// Starts it unless a workout is already recording, and asks the root view to show the Workout page.
     func startFromPhone(_ configuration: HKWorkoutConfiguration) {
+        WatchDiag.log("startFromPhone: activity=\(configuration.activityType.rawValue) phase=\(self.phase)")
         DispatchQueue.main.async {
             self.phoneStartCount += 1
             guard self.phase != .active, self.phase != .paused, self.phase != .ending else { return }
@@ -436,6 +438,7 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
     /// nikhil/custom: the phone's Lift Log ended. Save (or discard) the workout, unless the request was
     /// sent before this workout started (a stale, queued message from an earlier session).
     func endFromPhone(save: Bool, sentAt: Date) {
+        WatchDiag.log("endFromPhone: save=\(save) startedAt=\(String(describing: startedAt)) phase=\(phase)")
         DispatchQueue.main.async {
             guard let startedAt = self.startedAt, sentAt >= startedAt.addingTimeInterval(-5) else { return }
             if save {
@@ -461,6 +464,7 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
     private func start(configuration: HKWorkoutConfiguration?) {
         guard HKHealthStore.isHealthDataAvailable() else { phase = .unavailable; return }
         let status = store.authorizationStatus(for: HKQuantityType.workoutType())
+        WatchDiag.log("start: workout share status=\(status.rawValue) (2=authorized)")
         guard status == .sharingAuthorized else {
             pendingConfiguration = configuration
             requestAuthorization(then: true)
@@ -487,13 +491,16 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
             let begin = Date()
             startedAt = begin
             session.startActivity(with: begin)
-            builder.beginCollection(withStart: begin) { [weak self] _, _ in
+            WatchDiag.log("start: session created, starting activity")
+            builder.beginCollection(withStart: begin) { [weak self] ok, error in
+                WatchDiag.log("beginCollection ok=\(ok) error=\(error?.localizedDescription ?? "none")")
                 // Collection started (or failed silently); the delegate callbacks drive the UI from here.
                 DispatchQueue.main.async { self?.phase = .active }
             }
             StrandHaptic.commit.play()  // a firm tap confirms the session is live without looking
         } catch {
             // Could not create the session (rare). Fall back to idle so Start can be tried again.
+            WatchDiag.log("start: HKWorkoutSession failed: \(error.localizedDescription)")
             phase = .idle
         }
     }
@@ -537,7 +544,8 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
         // too-short recap. finishWorkout's authoritative HKWorkout.duration overrides it just below. (@bhelm)
         elapsed = builder.elapsedTime
         builder.endCollection(withEnd: stop) { [weak self] _, _ in
-            builder.finishWorkout { [weak self] hkWorkout, _ in
+            builder.finishWorkout { [weak self] hkWorkout, error in
+                WatchDiag.log("finishWorkout saved=\(hkWorkout != nil) error=\(error?.localizedDescription ?? "none")")
                 DispatchQueue.main.async {
                     if let duration = hkWorkout?.duration { self?.elapsed = duration }
                     StrandHaptic.success.play()  // milestone: the workout is banked to HealthKit
@@ -587,6 +595,7 @@ extension WatchWorkoutSession: HKWorkoutSessionDelegate {
     }
 
     func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
+        WatchDiag.log("session didFail: \(error.localizedDescription)")
         // The session died on us. Surface idle so the user can retry rather than sitting on a frozen screen.
         DispatchQueue.main.async { [weak self] in
             self?.phase = .idle

@@ -85,6 +85,7 @@ struct NOOPWatchApp: App {
 final class NOOPWatchAppDelegate: NSObject, WKApplicationDelegate {
     #if canImport(HealthKit)
     func handle(_ workoutConfiguration: HKWorkoutConfiguration) {
+        WatchDiag.log("app delegate: handle(workoutConfiguration)")
         WatchWorkoutSession.shared.startFromPhone(workoutConfiguration)
     }
     #endif
