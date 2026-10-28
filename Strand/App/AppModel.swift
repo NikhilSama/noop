@@ -524,15 +524,34 @@ final class AppModel: ObservableObject {
                 // `live = self.live` spelled out: this is nested inside the cadence `Task`, which
                 // requires explicit `self`, so the bare-name capture shorthand used elsewhere in this
                 // type would not resolve here.
-                await RescoreBackgroundScheduler.run(owesOnDefer: false,
-                                                     log: { [live = self.live] line in
-                                                         live.append(log: line)
-                                                     }) {
-                    await self.intelligence.analyzeRecent(force: false)
+                // nikhil/custom (battery): the backstop runs only when a throttled post-offload pass is
+                // owed, or the last pass is over 2 h old (see RescoreThrottle).
+                if RescoreThrottle.shouldRunBackstop(lastPass: self.customLastRescoreAt,
+                                                     owed: self.customRescoreOwed, now: Date()) {
+                    let owed = self.customRescoreOwed
+                    await RescoreBackgroundScheduler.run(owesOnDefer: false,
+                                                         log: { [live = self.live] line in
+                                                             live.append(log: line)
+                                                         }) {
+                        if owed {
+                            await self.intelligence.analyzeRecent(skipIfUnchanged: true,
+                                                                  triggerLabel: "post-offload-owed")
+                        } else {
+                            await self.intelligence.analyzeRecent(force: false)
+                        }
+                    }
+                    self.customLastRescoreAt = Date()
+                    self.customRescoreOwed = false
+                    // v5: recompute the skin-temp suite snapshots (cycle phase + body clock) from the
+                    // freshly-scored history so the Health hub cards read a ready result.
+                    await self.refreshV5Signals()
+                    #if os(iOS)
+                    if owed {
+                        await WidgetSnapshot.publish(from: self)
+                        await self.healthWriteBack?()
+                    }
+                    #endif
                 }
-                // v5: recompute the skin-temp suite snapshots (cycle phase + body clock) from the
-                // freshly-scored history so the Health hub cards read a ready result.
-                await self.refreshV5Signals()
                 // #836 battery: 30-min BACKSTOP cadence (twin of Android ANALYZE_INTERVAL_MS). The
                 // `force: false` gate above can't skip while the strap streams live HR — the fingerprint
                 // advances every second — so this re-scored the whole 21-day window every 15 min even though
@@ -703,6 +722,10 @@ final class AppModel: ObservableObject {
     /// while this type is shared with macOS, and the bridge is a `@StateObject` the app scene owns.
     var healthWriteBack: (() async -> Void)?
     #endif
+    /// nikhil/custom (battery): when the last post-offload/backstop re-score finished, and whether a
+    /// throttled post-offload pass is still owed (see RescoreThrottle).
+    private var customLastRescoreAt: Date?
+    private var customRescoreOwed = false
 
     /// Settle a re-score that is owed (#1538) — one an earlier attempt started and was killed partway
     /// through, or one a background trigger deferred rather than start where it could not finish.
@@ -763,10 +786,25 @@ final class AppModel: ObservableObject {
         // the #1538 report while never producing a score. Decide first whether this pass can finish here,
         // and hand it to a background-processing task when it cannot. A no-op on macOS, and on iOS a
         // foreground pass is never deferred.
+        // nikhil/custom (battery): a background offload re-scores at most every 30 min; a skipped one is
+        // owed and paid by the backstop tick. A foreground offload always re-scores (RescoreThrottle).
+        #if os(iOS)
+        let foreground = UIApplication.shared.applicationState == .active
+        #else
+        let foreground = true
+        #endif
+        guard RescoreThrottle.shouldRunPostOffload(lastPass: customLastRescoreAt, now: Date(),
+                                                   foreground: foreground) else {
+            customRescoreOwed = true
+            live.append(log: "re-score: post-offload deferred (battery throttle, last pass < 30 min ago)")
+            return
+        }
         await RescoreBackgroundScheduler.run(passInProgress: intelligence.computing,
                                              log: { [live] line in live.append(log: line) }) {
             await intelligence.analyzeRecent(skipIfUnchanged: true)
         }
+        customLastRescoreAt = Date()
+        customRescoreOwed = false
         await refreshV5Signals()
         #if os(iOS)
         // #980: a strap backfill routinely completes while the app is BACKGROUNDED (it runs as a
