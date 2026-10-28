@@ -1,5 +1,9 @@
 import SwiftUI
 import StrandDesign
+import WatchKit
+#if canImport(HealthKit)
+import HealthKit
+#endif
 
 // MARK: - NOOPWatch — the watchOS glance app
 //
@@ -21,6 +25,8 @@ struct NOOPWatchApp: App {
     // phone sent while the app was backgrounded is delivered as soon as we come up.
     @StateObject private var store = WatchScoreStore()
     @StateObject private var liveHR = WatchLiveHR()
+    // nikhil/custom: receives the workout configuration the phone sends when a Lift Log session starts.
+    @WKApplicationDelegateAdaptor(NOOPWatchAppDelegate.self) private var appDelegate
 
     init() {
         #if DEBUG
@@ -70,6 +76,16 @@ struct NOOPWatchApp: App {
                                       hr: 58, sleepSummary: "7h 12m",
                                       asOf: Date())
         demo.save()
+    }
+    #endif
+}
+
+// nikhil/custom: the phone's `HKHealthStore.startWatchApp(toHandle:)` (a Lift Log session starting) launches
+// or wakes the app here with a strength-training configuration; start it on the shared workout engine.
+final class NOOPWatchAppDelegate: NSObject, WKApplicationDelegate {
+    #if canImport(HealthKit)
+    func handle(_ workoutConfiguration: HKWorkoutConfiguration) {
+        WatchWorkoutSession.shared.startFromPhone(workoutConfiguration)
     }
     #endif
 }

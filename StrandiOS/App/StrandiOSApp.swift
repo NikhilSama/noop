@@ -94,6 +94,8 @@ struct StrandiOSApp: App {
         WatchSessionBridge.onStrapBuzz = { [weak model] loops in
             model?.buzz(loops: loops, gate: HapticPrefs.intervals)
         }
+        // nikhil/custom: a new Lift Log session also starts a strength workout on the Watch.
+        LiftWatchWorkoutLauncher.install(log: { [weak model] line in model?.live.append(log: AppModel.stamped(line)) })
         CoachBriefScheduler.register(generateBrief: { [weak coach = model.coach] in
             await coach?.generateBrief()
         }, log: { [weak model] line in

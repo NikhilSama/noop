@@ -1314,7 +1314,17 @@ final class HealthKitBridge: ObservableObject {
         for w in computed + mine where w.source != HealthKitBridge.appleWorkoutSource {
             byKey["\(w.startTs):\(w.sport)"] = w
         }
-        let rows = byKey.values.sorted { $0.startTs < $1.startTs }
+        // nikhil/custom: a Lift Log session also starts a strength workout on the Watch, and that Watch
+        // workout is the one Apple Health keeps (real wrist HR + energy, Activity rings). Skip writing the
+        // strap's copy of any lifting session a Health strength workout overlaps; once the Watch workout is
+        // imported, a copy written before it arrived falls out of the key set and is removed as an orphan.
+        let appleRows = (try? await whoopStore.workouts(deviceId: appleDeviceId, from: fromTs, to: toTs,
+                                                        limit: Self.workoutReadLimit)) ?? []
+        let watchStrength = appleRows.filter { $0.sport == LiftingImporter.sport }
+        let rows = byKey.values.sorted { $0.startTs < $1.startTs }.filter { row in
+            row.sport != LiftingImporter.sport
+                || !watchStrength.contains { LiftWatchWorkout.overlapsMostly(row.startTs, row.endTs, $0.startTs, $0.endTs) }
+        }
 
         func key(_ row: WorkoutRow) -> String { HealthWriteback.appleHealthWorkoutKey(startTs: row.startTs) }
 

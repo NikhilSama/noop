@@ -434,6 +434,8 @@ targets:
           - "NOOPWatch.entitlements"
       # nikhil/custom: interval presets shared with the phone timer.
       - path: Strand/Custom/IntervalPresets.swift
+      # nikhil/custom: Lift Log ↔ watch strength workout message keys.
+      - path: Strand/Custom/LiftWatchWorkout.swift
     info:
       path: NOOPWatch/Info.plist
       properties:
@@ -452,6 +454,9 @@ targets:
         WKCompanionAppBundleIdentifier: $(BUNDLE_ID_PREFIX).noop
         NSHealthShareUsageDescription: "NOOP reads your heart rate from the Watch sensor to show a live readout on your wrist. It stays on your device."
         NSHealthUpdateUsageDescription: "NOOP records a basic workout session on your Watch for a higher-fidelity heart rate. The session stays on your device."
+        # nikhil/custom: keep the workout session running with the screen down / app in the background
+        # (a Lift Log session starts it from the phone).
+        WKBackgroundModes: [workout-processing]
     entitlements:
       path: NOOPWatch/NOOPWatch.entitlements
       properties:

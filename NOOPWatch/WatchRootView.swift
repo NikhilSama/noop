@@ -9,13 +9,18 @@ import StrandDesign
 // every screen is one swipe away and the page indicator makes that obvious. The phone stays the brain for
 // the SCORES on the glance; Breathe / Workout / Intervals run on the watch's own sensors + haptics.
 struct WatchRootView: View {
+    // nikhil/custom: jump to the Workout page when the phone's Lift Log starts a workout.
+    @ObservedObject private var workout = WatchWorkoutSession.shared
+    @State private var page = 0
+
     var body: some View {
-        TabView {
-            WatchGlanceView()
-            WatchBreatheView()
-            WatchWorkoutView()
-            WatchIntervalView()
+        TabView(selection: $page) {
+            WatchGlanceView().tag(0)
+            WatchBreatheView().tag(1)
+            WatchWorkoutView().tag(2)
+            WatchIntervalView().tag(3)
         }
+        .onChange(of: workout.phoneStartCount) { _, _ in page = 2 }
         // watchOS page TabView shows the page-indicator dots by default; the iOS background-display-mode
         // customisation is unavailable here, so the plain page style is the right call.
         .tabViewStyle(.page)

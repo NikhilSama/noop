@@ -137,7 +137,13 @@ final class LiftSessionController: ObservableObject {
         isPresented = true
         claimStrap()
         persist()
+        Self.onSessionStarted?()
     }
+
+    /// nikhil/custom: set by the iOS app so a NEW Lift Log session also starts a strength workout on the
+    /// Watch, and the end of the session (saved or discarded) ends it. Not fired for a resumed session.
+    static var onSessionStarted: (() -> Void)?
+    static var onSessionEnded: ((_ saved: Bool) -> Void)?
 
     /// Pick up the session a previous run of NOOP left going, as the app process starts.
     ///
@@ -183,6 +189,7 @@ final class LiftSessionController: ObservableObject {
     func discard() {
         teardown()
         LiftSessionPersistence.clear()
+        Self.onSessionEnded?(false)
     }
 
     /// Called once the session has been written to the store.
@@ -190,6 +197,7 @@ final class LiftSessionController: ObservableObject {
         teardown()
         LiftSessionPersistence.clear()
         savedSessions += 1
+        Self.onSessionEnded?(true)
     }
 
     private func teardown() {

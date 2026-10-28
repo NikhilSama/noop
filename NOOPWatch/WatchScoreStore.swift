@@ -102,6 +102,22 @@ final class WatchScoreStore: NSObject, ObservableObject, WCSessionDelegate {
         }
     }
 
+    // nikhil/custom: the phone's Lift Log ended (saved or discarded); end the watch workout to match.
+    // Sent as a message when the watch is reachable, otherwise queued as user info.
+    func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        handleLiftEnd(message)
+    }
+
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        handleLiftEnd(userInfo)
+    }
+
+    private func handleLiftEnd(_ payload: [String: Any]) {
+        guard let save = payload[LiftWatchWorkout.endMessageKey] as? Bool else { return }
+        let sentAt = (payload[LiftWatchWorkout.sentAtKey] as? Double).map { Date(timeIntervalSince1970: $0) } ?? Date()
+        WatchWorkoutSession.shared.endFromPhone(save: save, sentAt: sentAt)
+    }
+
     // Required by the protocol on watchOS even though they are phone-side concerns. No-ops here.
     #if os(watchOS)
     func sessionReachabilityDidChange(_ session: WCSession) {}

@@ -27,3 +27,13 @@ final class CustomRescoreThrottleTests: XCTestCase {
         XCTAssertTrue(RescoreThrottle.shouldRunBackstop(lastPass: now + 600, owed: false, now: now))
     }
 }
+
+/// nikhil/custom: the Lift Log ↔ Watch workout overlap test that keeps one copy in Apple Health.
+final class CustomLiftWatchWorkoutTests: XCTestCase {
+    func testOverlapsMostly() {
+        XCTAssertTrue(LiftWatchWorkout.overlapsMostly(0, 3600, 60, 3700))      // same session, watch a bit later
+        XCTAssertTrue(LiftWatchWorkout.overlapsMostly(0, 3600, 600, 2400))     // watch inside the lift session
+        XCTAssertFalse(LiftWatchWorkout.overlapsMostly(0, 3600, 3000, 9000))   // barely touching
+        XCTAssertFalse(LiftWatchWorkout.overlapsMostly(0, 3600, 3600, 7200))   // back to back
+    }
+}

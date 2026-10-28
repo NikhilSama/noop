@@ -21,7 +21,8 @@ import HealthKit
 // "Grant Health access" state instead of a dead Start button. StrandHaptic (real WatchKit path now) marks
 // the start / pause / resume / end landings so the wrist confirms each state change without looking.
 struct WatchWorkoutView: View {
-    @StateObject private var workout = WatchWorkoutSession()
+    // nikhil/custom: one app-wide session, so a workout the phone starts (Lift Log) is the one this shows.
+    @ObservedObject private var workout = WatchWorkoutSession.shared
 
     var body: some View {
         // One screen, no scrolling. A GeometryReader hands each state the real space it has to live in so
@@ -309,6 +310,18 @@ struct WatchWorkoutView: View {
 // is invented: a metric stays nil until its first real sample lands and the UI renders a dash for nil.
 final class WatchWorkoutSession: NSObject, ObservableObject {
 
+    /// nikhil/custom: the app-wide engine, shared by the Workout page and the phone-started (Lift Log) path.
+    static let shared = WatchWorkoutSession()
+
+    /// nikhil/custom: bumped each time the phone starts a workout, so the root view can jump to the page.
+    @Published private(set) var phoneStartCount = 0
+    /// When the running workout began; an end request older than this is stale and ignored.
+    private(set) var startedAt: Date?
+    #if canImport(HealthKit) && os(watchOS)
+    /// A phone-supplied configuration waiting on the auth prompt.
+    private var pendingConfiguration: HKWorkoutConfiguration?
+    #endif
+
     /// Where we are in the lifecycle. The view switches its whole layout on this.
     enum Phase: Equatable {
         case unavailable   // HealthKit not on this device at all
@@ -388,7 +401,8 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
                     self.phase = .denied
                 } else {
                     self.phase = .idle
-                    if start { self.start() }
+                    if start { self.start(configuration: self.pendingConfiguration) }
+                    self.pendingConfiguration = nil
                 }
             }
         }
@@ -401,16 +415,64 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
     /// route through the auth prompt first and auto-start on grant.
     func start() {
         #if canImport(HealthKit) && os(watchOS)
+        start(configuration: nil)
+        #else
+        phase = .unavailable
+        #endif
+    }
+
+    #if canImport(HealthKit) && os(watchOS)
+    /// nikhil/custom: the phone launched NOOP with a workout configuration (a Lift Log session started).
+    /// Starts it unless a workout is already recording, and asks the root view to show the Workout page.
+    func startFromPhone(_ configuration: HKWorkoutConfiguration) {
+        DispatchQueue.main.async {
+            self.phoneStartCount += 1
+            guard self.phase != .active, self.phase != .paused, self.phase != .ending else { return }
+            if self.phase == .saved { self.reset() }
+            self.start(configuration: configuration)
+        }
+    }
+
+    /// nikhil/custom: the phone's Lift Log ended. Save (or discard) the workout, unless the request was
+    /// sent before this workout started (a stale, queued message from an earlier session).
+    func endFromPhone(save: Bool, sentAt: Date) {
+        DispatchQueue.main.async {
+            guard let startedAt = self.startedAt, sentAt >= startedAt.addingTimeInterval(-5) else { return }
+            if save {
+                self.end()
+            } else {
+                self.discard()
+            }
+        }
+    }
+
+    /// Stop and throw the workout away (the Lift Log was discarded), returning to idle.
+    private func discard() {
+        guard let session, let builder, phase == .active || phase == .paused else { return }
+        session.end()
+        builder.discardWorkout()
+        self.session = nil
+        self.builder = nil
+        startedAt = nil
+        StrandHaptic.light.play()
+        reset()
+    }
+
+    private func start(configuration: HKWorkoutConfiguration?) {
         guard HKHealthStore.isHealthDataAvailable() else { phase = .unavailable; return }
         let status = store.authorizationStatus(for: HKQuantityType.workoutType())
         guard status == .sharingAuthorized else {
+            pendingConfiguration = configuration
             requestAuthorization(then: true)
             return
         }
 
-        let config = HKWorkoutConfiguration()
-        config.activityType = .functionalStrengthTraining
-        config.locationType = .indoor
+        let config = configuration ?? {
+            let c = HKWorkoutConfiguration()
+            c.activityType = .functionalStrengthTraining
+            c.locationType = .indoor
+            return c
+        }()
 
         do {
             let session = try HKWorkoutSession(healthStore: store, configuration: config)
@@ -423,6 +485,7 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
             self.builder = builder
 
             let begin = Date()
+            startedAt = begin
             session.startActivity(with: begin)
             builder.beginCollection(withStart: begin) { [weak self] _, _ in
                 // Collection started (or failed silently); the delegate callbacks drive the UI from here.
@@ -433,10 +496,8 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
             // Could not create the session (rare). Fall back to idle so Start can be tried again.
             phase = .idle
         }
-        #else
-        phase = .unavailable
-        #endif
     }
+    #endif
 
     func pause() {
         #if canImport(HealthKit) && os(watchOS)
@@ -483,6 +544,7 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
                     self?.phase = .saved
                     self?.session = nil
                     self?.builder = nil
+                    self?.startedAt = nil
                 }
             }
         }

@@ -28,6 +28,10 @@
 	<string>NOOP records a basic workout session on your Watch for a higher-fidelity heart rate. The session stays on your device.</string>
 	<key>WKApplication</key>
 	<true/>
+	<key>WKBackgroundModes</key>
+	<array>
+		<string>workout-processing</string>
+	</array>
 	<key>WKCompanionAppBundleIdentifier</key>
 	<string>$(BUNDLE_ID_PREFIX).noop</string>
 </dict>
