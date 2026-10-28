@@ -346,6 +346,24 @@ final class AICoachEngine: ObservableObject {
         return cached
     }
 
+    /// Called before each request. Never makes the reply wait on S3 once a copy for this URL is cached: the
+    /// request uses that copy and the refresh runs in the background for the next one. Only with nothing
+    /// cached for the current URL (first run, or a renamed profile) does the request wait for the fetch.
+    static func preparePromptAddendum() async {
+        guard let url = promptAddendumURL else { return }
+        if UserDefaults.standard.string(forKey: promptAddendumCacheURLKey) != url.absoluteString {
+            await refreshPromptAddendum()
+        } else if !promptAddendumRefreshing {
+            promptAddendumRefreshing = true
+            Task {
+                await refreshPromptAddendum()
+                promptAddendumRefreshing = false
+            }
+        }
+    }
+
+    private static var promptAddendumRefreshing = false
+
     /// Re-fetch the remote addendum when it is older than `promptAddendumMaxAge` (or the URL changed, e.g. a
     /// renamed profile). A network failure keeps the last good copy; an empty file, or none for this user
     /// (S3 answers 403/404), means no addendum.
@@ -1122,7 +1140,7 @@ final class AICoachEngine: ObservableObject {
     /// Dispatch to the user's chosen provider client.
     private func callProvider(key: String,
                               messages: [(role: ChatMessage.Role, content: String)]) async throws -> String {
-        await Self.refreshPromptAddendum()
+        await Self.preparePromptAddendum()
         return try await provider.client.send(
             key: key,
             model: model,
@@ -1140,7 +1158,7 @@ final class AICoachEngine: ObservableObject {
                                 messages: [(role: ChatMessage.Role, content: String)],
                                 inlineImage: String? = nil,
                                 onDelta: (String) -> Void) async throws {
-        await Self.refreshPromptAddendum()
+        await Self.preparePromptAddendum()
         try await provider.client.streamWithImage(
             key: key,
             model: model,
