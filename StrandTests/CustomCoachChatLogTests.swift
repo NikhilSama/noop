@@ -31,6 +31,15 @@ final class CustomCoachChatLogTests: XCTestCase {
                        ["2026-10-27", "2026-10-28"])
     }
 
+    func testAfternoonUploadOncePerDayFromFourPM() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Kolkata")!
+        func at(_ h: Int, _ m: Int) -> Date { cal.date(from: DateComponents(year: 2026, month: 10, day: 29, hour: h, minute: m))! }
+        XCTAssertNil(CoachChatLog.afternoonUploadDay(now: at(15, 59), lastDone: nil, calendar: cal))
+        XCTAssertEqual(CoachChatLog.afternoonUploadDay(now: at(16, 0), lastDone: "2026-10-28", calendar: cal), "2026-10-29")
+        XCTAssertNil(CoachChatLog.afternoonUploadDay(now: at(21, 30), lastDone: "2026-10-29", calendar: cal))
+    }
+
     func testDriveRelayReplyNeedsOkJSON() {
         XCTAssertEqual(CoachDriveRelay.reply(Data(#"{"ok":true,"text":"Be kind"}"#.utf8))?.text, "Be kind")
         XCTAssertEqual(CoachDriveRelay.reply(Data(#"{"ok":true}"#.utf8)), .init(ok: true, text: nil))
@@ -42,6 +51,19 @@ final class CustomCoachChatLogTests: XCTestCase {
         let relay = URL(string: "https://script.google.com/macros/s/abc/exec")!
         XCTAssertEqual(CoachDriveRelay.uploadURL(relay: relay, name: "nikhil-0905-28-10-2026.md")?.absoluteString,
                        "https://script.google.com/macros/s/abc/exec?name=nikhil-0905-28-10-2026.md")
+    }
+
+    func testClearLeavesOneDividerBetweenConversations() {
+        XCTAssertEqual(CoachChatLog.appendBreak([], now: 5), [])
+        var log = CoachChatLog.merge([], snapshot: [("a", "user", "hi")], now: 10)
+        log = CoachChatLog.appendBreak(log, now: 20)
+        XCTAssertEqual(CoachChatLog.appendBreak(log, now: 30), log)
+        log = CoachChatLog.merge(log, snapshot: [("c", "user", "again")], now: 40)
+        XCTAssertEqual(log.map(\.role), ["user", CoachChatLog.breakRole, "user"])
+        XCTAssertEqual(log.map(\.order), [0, 1, 2])
+        let md = CoachChatLog.markdown(.init(day: "2026-10-28", entries: log), user: "nikhil")
+        XCTAssertLessThan(md.range(of: "hi")!.lowerBound, md.range(of: "*New conversation · ")!.lowerBound)
+        XCTAssertLessThan(md.range(of: "*New conversation · ")!.lowerBound, md.range(of: "again")!.lowerBound)
     }
 
     func testMarkdownOrdersTurns() {

@@ -793,6 +793,8 @@ final class AICoachEngine: ObservableObject {
     /// The Coach toolbar's "Clear conversation" action: wipes both the in-memory transcript and the
     /// persisted table. Fire-and-forget on the store side; the in-memory clear is immediate.
     func clearConversation() {
+        // nikhil/custom: the day's chat-log archive keeps the cleared turns; mark where the next chat starts.
+        if !messages.isEmpty { CoachChatLog.recordBreak() }
         messages = []
         conversationDay = nil
         droppedSummary = nil      // K13: reset the summary cache on clear
