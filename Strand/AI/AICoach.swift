@@ -375,7 +375,7 @@ final class AICoachEngine: ObservableObject {
         let d = UserDefaults.standard
         let sameURL = d.string(forKey: promptAddendumCacheURLKey) == url.absoluteString
         if sameURL, let at = promptAddendumFetchedAt, Date().timeIntervalSince(at) < promptAddendumMaxAge { return }
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
         request.httpMethod = "GET"
         guard let (data, response) = try? await URLSession(configuration: .ephemeral).data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 65_536,
@@ -948,6 +948,8 @@ final class AICoachEngine: ObservableObject {
     /// prescription + one recovery tip, without the user typing. Requires a key + data consent.
     /// K1: streams the brief the same way `send` does.
     func startBriefIfNeeded() async {
+        // nikhil/custom: Coach opens on an empty chat; a brief comes only when asked for in the chat.
+        guard UserDefaults.standard.bool(forKey: Self.autoBriefOnOpenKey) else { return }
         guard isConfigured, dataConsent, messages.isEmpty, !sending else { return }
         guard let key = resolvedKey else { return }
         errorText = nil
@@ -1013,6 +1015,9 @@ final class AICoachEngine: ObservableObject {
         }
     }
 
+    /// nikhil/custom: off unless set (UserDefaults bool, default false), so opening Coach never auto-generates a brief.
+    static let autoBriefOnOpenKey = "custom.coach.autoBriefOnOpen"
+
     /// K5: The brief instruction shared by the interactive `startBriefIfNeeded()` (streamed into the
     /// chat) and the headless `generateBrief()` below (used by the scheduled morning-brief notification).
     /// Kept in one place so the two paths never drift.
@@ -1045,6 +1050,10 @@ final class AICoachEngine: ObservableObject {
     /// Full data context = the metrics summary + recent workouts (+ an OPT-IN on-device-signals summary
     /// when the second consent is on). Used when the user has granted data access.
     func buildFullContext() async -> String {
+        // nikhil/custom: the scheduled brief runs on launch (scenePhase .active, initial: true) and on a
+        // background wake, before the app's first `repo.refresh()` has published `days`, so it used to read an
+        // empty cache and tell the user there was no wearable data. Load once first.
+        if !repo.loaded { await repo.refresh() }
         var ctx = buildContext()
         ctx += "\n\n" + (await recentWorkoutsBlock())
         // Derived stress: a single Baevsky Stress Index summary line over today's R-R, computed the same
