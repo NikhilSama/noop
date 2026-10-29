@@ -31,6 +31,19 @@ final class CustomCoachChatLogTests: XCTestCase {
                        ["2026-10-27", "2026-10-28"])
     }
 
+    func testDriveRelayReplyNeedsOkJSON() {
+        XCTAssertEqual(CoachDriveRelay.reply(Data(#"{"ok":true,"text":"Be kind"}"#.utf8))?.text, "Be kind")
+        XCTAssertEqual(CoachDriveRelay.reply(Data(#"{"ok":true}"#.utf8)), .init(ok: true, text: nil))
+        XCTAssertNil(CoachDriveRelay.reply(Data(#"{"ok":false,"error":"bad name"}"#.utf8)))
+        XCTAssertNil(CoachDriveRelay.reply(Data("<html>Sign in</html>".utf8)))
+    }
+
+    func testDriveRelayUploadURLCarriesTheName() {
+        let relay = URL(string: "https://script.google.com/macros/s/abc/exec")!
+        XCTAssertEqual(CoachDriveRelay.uploadURL(relay: relay, name: "nikhil-0905-28-10-2026.md")?.absoluteString,
+                       "https://script.google.com/macros/s/abc/exec?name=nikhil-0905-28-10-2026.md")
+    }
+
     func testMarkdownOrdersTurns() {
         let md = CoachChatLog.markdown(.init(day: "2026-10-28", entries: [
             .init(id: "b", role: "assistant", text: "Rest today.", firstSeen: 0, order: 1),

@@ -1,7 +1,7 @@
 import Foundation
 
 // nikhil/custom — a permanent, local archive of AI Coach chats, plus a once-a-day upload of each finished
-// day to S3.
+// day to a Google Drive folder.
 //
 // The Coach keeps ONE conversation and replaces it wholesale (a new day, or "Clear conversation"), so the
 // store never holds history. Every persisted snapshot is therefore also merged into a per-day archive file
@@ -9,10 +9,10 @@ import Foundation
 // loses nothing already archived).
 //
 // Upload target comes from a bundled, git-excluded `CoachChatUpload.local.txt` (under `Strand/AI/`):
-//   line 1: the folder URL, e.g. https://<bucket>.s3.<region>.amazonaws.com/noop-coach
+//   line 1: the Drive relay's Apps Script /exec URL (see `CoachDriveRelay`)
 //   line 2 (optional): user=<name>, used only when the NOOP profile has no name
-// The folder accepts anonymous PUTs only (no read/list), so no credentials live on the phone. Without the
-// file nothing is uploaded; the local archive still accumulates.
+// No Google credentials live on the phone. Without the file nothing is uploaded; the local archive still
+// accumulates.
 enum CoachChatLog {
 
     struct Entry: Codable, Equatable {
@@ -111,16 +111,17 @@ enum CoachChatLog {
 
     // MARK: - Upload
 
-    private static let uploadedKey = "custom.coachChatLog.uploadedDays"
+    // A fresh key for Drive, so days already sent to the old S3 folder are uploaded again.
+    private static let uploadedKey = "custom.coachChatLog.uploadedDays.drive"
 
-    private static let config: (folder: URL, user: String)? = {
+    private static let config: (relay: URL, user: String)? = {
         guard let url = Bundle.main.url(forResource: "CoachChatUpload.local", withExtension: "txt"),
               let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
         let lines = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
-        guard let first = lines.first, let folder = URL(string: first), folder.scheme?.lowercased() == "https"
+        guard let first = lines.first, let relay = URL(string: first), relay.scheme?.lowercased() == "https"
         else { return nil }
         let user = lines.dropFirst().first { $0.hasPrefix("user=") }.map { String($0.dropFirst(5)) } ?? "user"
-        return (folder, user)
+        return (relay, user)
     }()
 
     private static let uploadLock = NSLock()
@@ -145,12 +146,15 @@ enum CoachChatLog {
         for day in daysToUpload(archived: archived, uploaded: uploaded, today: dayString(now)) {
             guard let file = read(day: day), !file.entries.isEmpty else { uploaded.insert(day); continue }
             let name = objectName(user: user, day: day, uploadedAt: now)
-            var request = URLRequest(url: config.folder.appendingPathComponent(name), timeoutInterval: 20)
-            request.httpMethod = "PUT"
-            request.setValue("text/markdown; charset=utf-8", forHTTPHeaderField: "Content-Type")
+            guard let url = CoachDriveRelay.uploadURL(relay: config.relay, name: name) else { break }
+            var request = URLRequest(url: url, timeoutInterval: 30)
+            request.httpMethod = "POST"
+            request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
             request.httpBody = Data(markdown(file, user: ProfileStore.currentName ?? user).utf8)
-            guard let (_, response) = try? await URLSession(configuration: .ephemeral).data(for: request),
-                  (response as? HTTPURLResponse)?.statusCode == 200 else { break }   // retry on a later call
+            // Apps Script answers a POST with a 302 to its output, which URLSession follows as a GET.
+            guard let (data, response) = try? await URLSession(configuration: .ephemeral).data(for: request),
+                  (response as? HTTPURLResponse)?.statusCode == 200,
+                  CoachDriveRelay.reply(data) != nil else { break }   // retry on a later call
             uploaded.insert(day)
             UserDefaults.standard.set(Array(uploaded), forKey: uploadedKey)
         }

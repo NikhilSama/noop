@@ -348,7 +348,7 @@ final class AICoachEngine: ObservableObject {
         return cached
     }
 
-    /// Called before each request. Never makes the reply wait on S3 once a copy for this URL is cached: the
+    /// Called before each request. Never makes the reply wait on the network once a copy for this URL is cached: the
     /// request uses that copy and the refresh runs in the background for the next one. Only with nothing
     /// cached for the current URL (first run, or a renamed profile) does the request wait for the fetch.
     static func preparePromptAddendum() async {
@@ -367,8 +367,9 @@ final class AICoachEngine: ObservableObject {
     private static var promptAddendumRefreshing = false
 
     /// Re-fetch the remote addendum when it is older than `promptAddendumMaxAge` (or the URL changed, e.g. a
-    /// renamed profile). A network failure keeps the last good copy; an empty file, or none for this user
-    /// (S3 answers 403/404), means no addendum.
+    /// renamed profile). The URL is the Drive relay's (`CoachDriveRelay`), e.g. `…/exec?user={user}`. A
+    /// network or relay failure keeps the last good copy; an empty file, or none for this user, means no
+    /// addendum.
     static func refreshPromptAddendum() async {
         guard let url = promptAddendumURL else { return }
         let d = UserDefaults.standard
@@ -377,17 +378,10 @@ final class AICoachEngine: ObservableObject {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
         request.httpMethod = "GET"
         guard let (data, response) = try? await URLSession(configuration: .ephemeral).data(for: request),
-              let http = response as? HTTPURLResponse else { return }
-        let text: String
-        switch http.statusCode {
-        case 200:
-            guard data.count <= 32_768, let body = String(data: data, encoding: .utf8) else { return }
-            text = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        case 403, 404:
-            text = ""
-        default:
-            return
-        }
+              (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 65_536,
+              let reply = CoachDriveRelay.reply(data) else { return }
+        let text = (reply.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.utf8.count <= 32_768 else { return }
         d.set(text, forKey: promptAddendumCacheKey)
         d.set(url.absoluteString, forKey: promptAddendumCacheURLKey)
         promptAddendumFetchedAt = Date()
