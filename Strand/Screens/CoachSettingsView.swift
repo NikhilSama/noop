@@ -5,9 +5,8 @@ import StrandDesign
 /// (#2243). Holds the surfaces that used to stack above the transcript: the data-sharing consent, the
 /// two further opt-ins that depend on it, the editable coach instructions, and the morning brief.
 ///
-/// Connection management (the provider pill, Update key, Clear conversation, Disconnect) stays on
-/// `CoachView`, where both the conversation and the key editor are visible. The Kotlin twin
-/// `CoachSettingsScreen` splits on the same line.
+/// nikhil/custom: Update key and Disconnect live here too (`connectionBar`); `CoachView` keeps only the
+/// provider pill, Clear conversation, and the inline key editor shown after a rejection.
 ///
 /// Presented as a sheet rather than pushed. CoachView appears in three places between the two
 /// platforms (a macOS route, an iPhone tab root whose navigation bar is hidden, and an iPhone pillar
@@ -27,6 +26,10 @@ struct CoachSettingsView: View {
     /// The coach-instructions editor, collapsed until asked for.
     @State private var promptExpanded: Bool = false
     @State private var promptDraft: String = ""
+
+    @State private var newKey: String = ""
+    @State private var keyStatus: String?
+    @State private var showDisconnectConfirm = false
 
     var body: some View {
         // Literals, not String(localized:): `title`/`subtitle` are LocalizedStringKey, which converts
@@ -55,6 +58,7 @@ struct CoachSettingsView: View {
             if coach.dataConsent && coach.provider == .gemini { multimodalChartBar }
             systemPromptBar
             morningBriefBar
+            connectionBar
         }
         // Opening this screen is the moment a stale catalogue is worth refreshing: a key exists here by
         // definition, and the picker above is about to be read. Rate-limited and silent on failure.
@@ -102,6 +106,66 @@ struct CoachSettingsView: View {
                 .accessibilityLabel("Model")
             }
         }
+    }
+
+    /// Replace the stored key (the transcript is kept), or forget the key and disconnect, which also
+    /// clears the conversation and returns Coach to its setup card.
+    private var connectionBar: some View {
+        NoopCard(padding: 14, tint: StrandPalette.chargeColor) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Connection")
+                    .font(StrandFont.subhead).foregroundStyle(StrandPalette.textPrimary)
+                SecureField("Paste a new \(coach.provider.displayName) API key", text: $newKey)
+                    .textFieldStyle(.plain)
+                    .font(StrandFont.body)
+                    .foregroundStyle(StrandPalette.textPrimary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(StrandPalette.surfaceInset, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(StrandPalette.hairline, lineWidth: 1))
+                    .onSubmit(saveNewKey)
+                    .accessibilityLabel("New API key")
+                if let keyStatus {
+                    Text(keyStatus)
+                        .font(StrandFont.footnote)
+                        .foregroundStyle(StrandPalette.textSecondary)
+                }
+                HStack {
+                    NoopButton("Update key", systemImage: "key.fill", kind: .primary, action: saveNewKey)
+                        .disabled(newKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Spacer()
+                    Button(role: .destructive) {
+                        showDisconnectConfirm = true
+                    } label: {
+                        Label("Disconnect", systemImage: "xmark.circle")
+                            .font(StrandFont.footnote)
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(StrandPalette.statusCritical)
+                    .accessibilityLabel("Disconnect provider")
+                }
+            }
+        }
+        .confirmationDialog("Disconnect \(coach.provider.displayName)?",
+                            isPresented: $showDisconnectConfirm, titleVisibility: .visible) {
+            Button("Disconnect", role: .destructive) {
+                coach.disconnect()
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This forgets the saved key and clears the conversation.")
+        }
+    }
+
+    private func saveNewKey() {
+        let trimmed = newKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        coach.setKey(trimmed)
+        newKey = ""
+        keyStatus = coach.errorText ?? String(localized: "Key updated.")
     }
 
     /// Explicit, revocable permission for the coach to read & send the user's data. Off by default.

@@ -36,6 +36,8 @@ struct CoachView: View {
     /// The id typed in the "Custom…" field.
     @State private var customModelDraft: String = ""
     @FocusState private var composerFocused: Bool
+    /// nikhil/custom: see the composer's `.id(colorScheme)`.
+    @Environment(\.colorScheme) private var colorScheme
 
     /// K2: confirmation gate for the destructive "Clear conversation" toolbar action.
     @State private var showClearConfirm = false
@@ -59,13 +61,12 @@ struct CoachView: View {
 
     var body: some View {
         ScreenScaffold(title: "Coach",
-                       subtitle: "Ask about your charge, effort, rest and workouts, grounded in your own numbers.",
                        // Liquid finish: the same full-bleed day-of-sky backdrop Today + the other liquid
                        // tabs carry, so Coach sits in one atmosphere. Static + non-interactive; the frosted
                        // message/setup cards below sit on the opaque canvas and stay legible.
-                       topBackground: liquidScaffoldSky()) {
+                       topBackground: liquidScaffoldSky(),
+                       trailing: { if coach.isConfigured { headerActions } }) {
             if coach.isConfigured {
-                connectedHeader
                 transcript
                 if let error = coach.errorText, !error.isEmpty {
                     errorBanner(error)
@@ -85,51 +86,10 @@ struct CoachView: View {
                    let tokens = coach.estimatedTokens(forDraft: draft) {
                     tokenEstimateBar(tokens)
                 }
-                privacyFootnote
             } else {
                 setupCard
             }
         }
-        // macOS only. On iOS these actions live in `connectionMenu` instead, because this bar is hidden for
-        // a primary tab root and VISIBLE in the pillar sheet, so leaving them here would render nothing
-        // on the Coach tab and a duplicate of the menu in the sheet. One control per platform, reachable
-        // in both of iOS's presentations. The `#if` sits on the CHAIN rather than inside the builder:
-        // `ToolbarContentBuilder` is not relied on to accept an empty body, and the one other
-        // conditional toolbar here (CoupledView) always yields an item on both platforms. (#2206)
-        #if os(macOS)
-        .toolbar {
-            if coach.isConfigured {
-                ToolbarItem {
-                    Button {
-                        toggleKeyEditor()
-                    } label: {
-                        Label("Update key", systemImage: "key.fill")
-                    }
-                }
-                // K2: wipe the persisted + in-memory conversation. Confirmed, since it's destructive.
-                ToolbarItem {
-                    Button(role: .destructive) {
-                        showClearConfirm = true
-                    } label: {
-                        Label("Clear conversation", systemImage: "trash")
-                    }
-                    .help("Clear the saved conversation")
-                    .accessibilityLabel("Clear conversation")
-                    .disabled(coach.messages.isEmpty)
-                }
-                ToolbarItem {
-                    Button(role: .destructive) {
-                        coach.disconnect()
-                        keyDraft = ""
-                    } label: {
-                        Label("Disconnect", systemImage: "gearshape")
-                    }
-                    .help("Forget the saved key and disconnect")
-                    .accessibilityLabel("Disconnect provider")
-                }
-            }
-        }
-        #endif
         // #2243: coach settings. `repo` rides along because the scaffold's environment is not
         // inherited by a sheet's own view tree.
         .sheet(isPresented: $showSettings) {
@@ -393,87 +353,38 @@ struct CoachView: View {
 
     // MARK: - Connected state
 
-    private var connectedHeader: some View {
-        HStack(spacing: 10) {
-            StatePill("\(coach.provider.displayName) · \(coach.model)", tone: .accent, showsDot: true)
-            Spacer()
+    /// nikhil/custom: the screen's actions, beside the title. Update key and Disconnect live in
+    /// `CoachSettingsView` (which also names the provider and model), so the header carries only the
+    /// Thinking indicator, Clear conversation and the way into settings. The
+    /// scaffold header is drawn in content, so this shows on the iPhone tab (whose navigation bar is
+    /// hidden), in the pillar sheet, and on macOS alike.
+    private var headerActions: some View {
+        HStack(spacing: 16) {
             if coach.sending {
                 StatePill("Thinking", tone: .accent, pulsing: true)
-            }
-            // #2243: the way through to what used to be stacked under this header.
-            Button {
-                showSettings = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(StrandPalette.textSecondary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(String(localized: "Coach settings"))
-            #if os(iOS)
-            connectionMenu
-            #endif
-        }
-    }
-
-    #if os(iOS)
-    /// #2206: the same connection actions the toolbar above carries, drawn where iPhone can reach them.
-    ///
-    /// `RootTabView.tab(...)` wraps every primary tab root in a NavigationStack and applies
-    /// `.toolbar(.hidden, for: .navigationBar)`, because each screen draws its own in-content header.
-    /// So Clear conversation and Disconnect were being placed into a bar this platform never shows, and
-    /// rendered nowhere. At the time, Disconnect was the only route back to the setup card: `isConfigured`
-    /// gates that card away the moment a key is saved. The
-    /// result was a key that could be set once and then never changed, with reinstalling the app the
-    /// only way out, which on an offline-first app costs the wearer their entire history.
-    ///
-    /// macOS keeps the toolbar and does not get this, so its behaviour is untouched. On iOS the toolbar
-    /// route is withdrawn rather than kept alongside: CoachView is presented twice on this platform, as
-    /// a primary tab whose bar is hidden and as a pillar sheet whose bar is NOT (it draws a Done button
-    /// and only hides the bar's background). Keeping both would render nothing on the tab and two of
-    /// everything in the sheet. One control, reachable in both presentations.
-    ///
-    /// A menu rather than a bare button because it needs two taps to reach a destructive action,
-    /// matching the protection the toolbar's separation gives, and because both actions belong to the
-    /// same connection.
-    ///
-    /// Worth knowing before changing `disconnect()`: neither `hasKey` nor `isConfigured` is published,
-    /// since `hasKey` reads the Keychain on each evaluation. The setup card reappears because
-    /// `disconnect()` ALSO assigns the published `messages`, which is what re-evaluates the body. A
-    /// future disconnect that stopped clearing the transcript would clear the key and leave this screen
-    /// showing a chat for a connection that no longer exists. macOS has depended on the same coupling
-    /// since its toolbar button existed, so this is a latent edge being written down, not a new one.
-    private var connectionMenu: some View {
-        Menu {
-            Button {
-                toggleKeyEditor()
-            } label: {
-                Label("Update key", systemImage: "key.fill")
             }
             Button {
                 showClearConfirm = true
             } label: {
-                Label("Clear conversation", systemImage: "trash")
+                Image(systemName: "trash")
+                    .font(StrandFont.headline)
+                    .foregroundStyle(StrandPalette.textSecondary)
             }
+            .buttonStyle(.plain)
             .disabled(coach.messages.isEmpty)
-            Button(role: .destructive) {
-                coach.disconnect()
-                keyDraft = ""
+            .help("Clear the saved conversation")
+            .accessibilityLabel("Clear conversation")
+            Button {
+                showSettings = true
             } label: {
-                Label("Disconnect", systemImage: "gearshape")
+                Image(systemName: "slider.horizontal.3")
+                    .font(StrandFont.headline)
+                    .foregroundStyle(StrandPalette.textSecondary)
             }
-        } label: {
-            // Same affordance DevicesView uses for its per-device menu, headline size included. The
-            // size is not decoration here: the report this came from was that the option could not be
-            // FOUND, so a control that matches the one the wearer has already learned, at a size worth
-            // aiming at, is doing part of the work.
-            Image(systemName: "ellipsis.circle")
-                .font(StrandFont.headline)
-                .foregroundStyle(StrandPalette.textSecondary)
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "Coach settings"))
         }
-        .accessibilityLabel("Connection")
     }
-    #endif
 
     private var transcript: some View {
         StrandCard(padding: 16) {
@@ -517,10 +428,21 @@ struct CoachView: View {
 
     private var emptyTranscript: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Ask your first question")
-                .font(StrandFont.headline)
-                .foregroundStyle(StrandPalette.textPrimary)
-            Text("Coach reads a summary of your last two weeks plus 30-day averages and recent workouts, then answers in plain language. Try a suggestion below.")
+            // nikhil/custom: greet by the profile's first name (the name the addendum and memories are keyed by).
+            if let first = ProfileStore.currentName?.split(separator: " ").first {
+                Text("Hello, \(String(first))")
+                    .font(StrandFont.headline)
+                    .foregroundStyle(StrandPalette.textPrimary)
+            } else {
+                Text("Hello")
+                    .font(StrandFont.headline)
+                    .foregroundStyle(StrandPalette.textPrimary)
+            }
+            Text("I read a summary of your last two weeks plus 30-day averages and recent workouts, and draw on leading-edge research from the NIH and other respected medical sources to help you look your best, feel your best and age well.")
+                .font(StrandFont.subhead)
+                .foregroundStyle(StrandPalette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("My advice is personal to you: not just your WHOOP metrics, but your blood work, your health records and everything you've told me. Tell me anything else you'd like me to know, ask me to remember it, and I will.")
                 .font(StrandFont.subhead)
                 .foregroundStyle(StrandPalette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -770,6 +692,12 @@ struct CoachView: View {
                     .strokeBorder(composerFocused ? StrandPalette.focusRing : StrandPalette.hairline, lineWidth: 1))
                 .onSubmit { send(draft) }
                 .accessibilityLabel("Question")
+                // nikhil/custom: a vertical-axis TextField is a UITextView underneath, and it keeps the
+                // text colour it resolved when it was created. When the phone switches between Light and
+                // Dark with the screen alive (Automatic appearance at sunset/sunrise), the field's
+                // background follows the new scheme but the text stays in the old one: dark ink on the
+                // dark field. Rebuilding the field on a scheme change makes it resolve the colour again.
+                .id(colorScheme)
 
             // K4: on-device voice input (iOS only). macOS compiles this section out entirely.
             #if os(iOS)
