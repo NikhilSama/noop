@@ -189,13 +189,13 @@ public enum StrandPalette {
         .init(color: Color(light: "#CB3A2F", dark: "#E5483B"), location: 1.0),
     ]
 
-    // MARK: Recovery / Charge scale — three XYLO bands (nikhil/custom, option A "Halo").
-    // 0–33 coral red, 34–66 warm yellow, 67–100 Halo Cyan green, as hard bands rather than the
+    // MARK: Recovery / Charge scale — three XYLO bands (nikhil/custom, option B "Aurora").
+    // 0–33 magenta-pink, 34–66 lemon, 67–100 mint green, as hard bands rather than the
     // upstream five-step blend, so a score reads as one of three states at a glance. The five
     // historical names stay as aliases onto the three bands for existing callers.
-    public static let recoveryRed    = Color(light: "#D93A50", dark: "#FF5A6E")
-    public static let recoveryYellow = Color(light: "#C98F12", dark: "#FFC857")
-    public static let recoveryGreen  = Color(light: "#0B9C82", dark: "#36F1CD")
+    public static let recoveryRed    = Color(light: "#D6286C", dark: "#FF4D8D")
+    public static let recoveryYellow = Color(light: "#A89A12", dark: "#F5E663")
+    public static let recoveryGreen  = Color(light: "#1E9E5A", dark: "#5CF29B")
     public static let recovery000 = recoveryRed
     public static let recovery030 = recoveryRed
     public static let recovery055 = recoveryYellow
@@ -282,8 +282,8 @@ public enum StrandPalette {
 
     /// Charge (recovery) — gold world / Classic green.
     public static var chargeColor: Color  { isClassic ? Color(light: "#2E9E4F", dark: "#46B45A") : recoveryGreen } // nikhil/custom
-    public static var chargeDeep: Color    { isClassic ? Color(light: "#207A3C", dark: "#2E9E4F") : Color(light: "#0C7A69", dark: "#1F9E89") }
-    public static var chargeBright: Color  { isClassic ? Color(light: "#5FBE6E", dark: "#86D98E") : Color(light: "#13B897", dark: "#86F7E1") }
+    public static var chargeDeep: Color    { isClassic ? Color(light: "#207A3C", dark: "#2E9E4F") : Color(light: "#16804A", dark: "#2BBF73") }
+    public static var chargeBright: Color  { isClassic ? Color(light: "#5FBE6E", dark: "#86D98E") : Color(light: "#2DB873", dark: "#A3F8C8") }
     public static var chargeGlow: Color    { isClassic ? Color(light: "#2E9E4F", dark: "#46B45A") : recoveryGreen }
     /// Diagonal accent pair for the Charge card wash + gauge stroke (deep → bright).
     public static var chargeGradient: Gradient { Gradient(colors: [chargeDeep, chargeBright]) }
