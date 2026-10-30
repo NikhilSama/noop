@@ -1014,9 +1014,16 @@ struct MetricDetailView: View {
                     // Scenic hero: the metric's current value as a layered ring gauge (0–100
                     // scores) or a big SF-Rounded headline, floated over the domain's starfield,
                     // with the range pill. Then the frosted chart / stat tiles / correlations.
-                    heroHeader(effectiveRange: effRange, windowed: win, windowFellBack: fellBack)
+                    // nikhil/custom: Effort leads with the day's breakdown (workouts and load split); the
+                    // gauge header goes and only its range pills stay, sitting above the chart they drive.
+                    if !leadsWithBreakdown {
+                        heroHeader(effectiveRange: effRange, windowed: win, windowFellBack: fellBack)
+                    }
                     if let breakdownDay {
                         HeroBreakdownSection(metricKey: metric.key, initialDay: breakdownDay, range: effRange)
+                    }
+                    if leadsWithBreakdown {
+                        rangePills(effectiveRange: effRange, windowed: win, windowFellBack: fellBack)
                     }
                     heroChart(effectiveRange: effRange, windowed: win, windowFellBack: fellBack)
                     // #1848: the skin-temp explorer's explanatory note (nil for every other metric and
@@ -1414,6 +1421,28 @@ struct MetricDetailView: View {
     }
 
     // MARK: Range bar
+
+    /// nikhil/custom: the Effort detail drops the gauge header (see `body`).
+    private var leadsWithBreakdown: Bool { metric.key == HeroRingMetric.effort }
+
+    /// The range pills and reading-count caption alone, without `rangeBar`'s title block.
+    private func rangePills(effectiveRange: ExploreRange,
+                            windowed: [(day: String, value: Double)],
+                            windowFellBack: Bool) -> some View {
+        let caption = rangeCaption(effectiveRange: effectiveRange,
+                                   windowed: windowed,
+                                   windowFellBack: windowFellBack)
+        return VStack(alignment: .leading, spacing: 8) {
+            SegmentedPillControl(ExploreRange.allCases, selection: selectionBinding,
+                                 adaptsToAvailableWidth: true,
+                                 isEnabled: isUnlocked) { $0.label }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            Text(caption)
+                .font(StrandFont.footnote)
+                .foregroundStyle(windowFellBack ? StrandPalette.statusWarning : StrandPalette.textTertiary)
+                .accessibilityLabel(caption)
+        }
+    }
 
     private func rangeBar(effectiveRange: ExploreRange,
                           windowed: [(day: String, value: Double)],

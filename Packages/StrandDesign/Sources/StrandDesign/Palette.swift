@@ -213,13 +213,13 @@ public enum StrandPalette {
     /// The signature recovery gradient (bronze → champagne, or Classic red→green).
     public static var recoveryGradient: Gradient { Gradient(stops: recoveryStops) }
 
-    // MARK: Strain / Effort ramp — the amber "Effort" colour world.
-    // Deep ember → warm amber → bright amber → soft amber peak: heat/output, all in the
-    // Effort accent family rather than veering into magenta.
-    public static let strain000 = Color(light: "#7E460E", dark: "#9C5A14") // deep ember
-    public static let strain033 = Color(light: "#A4621B", dark: "#C2762A") // warm amber
-    public static let strain066 = Color(light: "#C2792E", dark: "#D98A3D") // bright amber
-    public static let strain100 = Color(light: "#D89240", dark: "#F0A85A") // soft amber peak
+    // MARK: Strain / Effort ramp — the XYLO halo "Effort" colour world (nikhil/custom).
+    // Deep blue → Halo Blue → teal → Halo Cyan peak, the two XYLO brand colours in place of
+    // the upstream amber ramp, so every Effort line, average and tile reads in the brand.
+    public static let strain000 = Color(light: "#1F3F8F", dark: "#2A4FA8") // deep blue
+    public static let strain033 = Color(light: "#2F62D6", dark: "#3D7BFF") // Halo Blue
+    public static let strain066 = Color(light: "#1A8FAF", dark: "#3AB6E6") // teal
+    public static let strain100 = Color(light: "#0B9C82", dark: "#36F1CD") // Halo Cyan
 
     public static var strainStops: [Gradient.Stop] {
         isClassic ? cStrainStops : [
@@ -261,7 +261,7 @@ public enum StrandPalette {
     // MARK: Per-metric accents — HRV / SpO₂ / energy / risk. Classic leans the traditional hues (purple HRV, red risk).
     public static var metricCyan:   Color { isClassic ? Color(light: "#2E92B4", dark: "#3FA9C9") : Color(light: "#2E92B4", dark: "#3FA9C9") }
     public static var metricPurple: Color { isClassic ? Color(light: "#6A4FC0", dark: "#8E6FD6") : Color(light: "#3A80D6", dark: "#4A90E2") }
-    public static var metricAmber:  Color { isClassic ? Color(light: "#CFA528", dark: "#F2C53D") : Color(light: "#C2792E", dark: "#D98A3D") }
+    public static var metricAmber:  Color { isClassic ? Color(light: "#CFA528", dark: "#F2C53D") : Color(light: "#1A8FAF", dark: "#3AB6E6") } // nikhil/custom: teal, not amber
     public static var metricRose:   Color { isClassic ? Color(light: "#CB3A2F", dark: "#E5483B") : Color(light: "#C84E1E", dark: "#E0662F") }
 
     // MARK: - Titanium & Gold domain "colour worlds" (NEW)

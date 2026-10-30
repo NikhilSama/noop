@@ -2264,7 +2264,14 @@ private struct HeroScoreCell: View {
             tapPassesThrough: detailRoute != nil
         )
         if let detailRoute {
-            NavigationLink(value: detailRoute) { gauge }
+            // nikhil/custom: the gauge takes no touches of its own, so its splash gesture can't compete
+            // with the link and a plain tap always opens the detail (it used to need a press-and-hold).
+            NavigationLink(value: detailRoute) {
+                ZStack {
+                    Color.clear.contentShape(Circle())
+                    gauge.allowsHitTesting(false)
+                }
+            }
                 .buttonStyle(LiquidPressStyle())
                 // The ring is what shows the NUMBER, so its spoken label carries the number too. Without
                 // this a VoiceOver user hears only the metric name on the element displaying the value,
