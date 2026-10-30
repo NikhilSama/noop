@@ -8,7 +8,8 @@ import HealthKit
 //
 // The phone stays the brain: it sends the set in focus with its numbers prefilled (`LiftWatchState`), and
 // the button sends back the set with whatever the crown changed (`LiftWatchAction`), which the phone
-// applies and advances exactly like its own big button. Tap weight or reps to pick what the crown edits.
+// applies and advances exactly like its own big button. Tap weight or reps to pick what the crown edits;
+// the row holds crown focus (outlined) so the crown edits numbers rather than the music volume.
 
 /// Holds the latest session state pushed by the phone.
 final class WatchLiftStore: ObservableObject {
@@ -57,6 +58,9 @@ struct WatchLiftView: View {
     @State private var weight: Double = 0      // display unit
     @State private var reps: Double = 0
     @State private var shownSlot: String = ""
+    /// The crown only reaches a view that holds focus; without it watchOS gives the crown to Now Playing
+    /// volume. Claimed when the screen opens and on every tap of a number.
+    @FocusState private var crownFocused: Bool
 
     var body: some View {
         Group {
@@ -104,9 +108,11 @@ struct WatchLiftView: View {
                     .onTapGesture { select(.reps) }
             }
             .focusable()
+            .focused($crownFocused)
             .digitalCrownRotation($crown, from: -10_000, through: 10_000, by: 1,
                                   sensitivity: .low, isContinuous: false, isHapticFeedbackEnabled: true)
             .onChange(of: crown) { old, new in nudge(by: new - old, step: s.weightStep) }
+            .onAppear { crownFocused = true }
             Button {
                 lift.send(LiftWatchAction(
                     exerciseIndex: s.exerciseIndex, setIndex: s.setIndex,
@@ -186,7 +192,8 @@ struct WatchLiftView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 3)
         .background(RoundedRectangle(cornerRadius: 8)
-            .stroke(selected ? StrandPalette.effortColor : StrandPalette.hairlineStrong, lineWidth: selected ? 2 : 1))
+            .stroke(selected && crownFocused ? StrandPalette.effortColor : StrandPalette.hairlineStrong,
+                    lineWidth: selected && crownFocused ? 2 : 1))
     }
 
     private func subtitle(_ s: LiftWatchState) -> String {
@@ -202,7 +209,10 @@ struct WatchLiftView: View {
 
     // MARK: Editing
 
-    private func select(_ f: Field) { field = f }
+    private func select(_ f: Field) {
+        field = f
+        crownFocused = true
+    }
 
     private func nudge(by delta: Double, step: Double) {
         guard delta != 0 else { return }
@@ -223,6 +233,7 @@ struct WatchLiftView: View {
         weight = s.imperial ? (kg * 2.2046226218).rounded() : kg
         reps = Double(s.reps ?? 0)
         field = .weight
+        crownFocused = true
     }
 }
 
