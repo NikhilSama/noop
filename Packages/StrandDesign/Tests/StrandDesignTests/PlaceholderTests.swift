@@ -17,7 +17,7 @@ final class StrandDesignTests: XCTestCase {
     }
 
     func testRecoveryGradientStops() {
-        XCTAssertEqual(StrandPalette.recoveryStops.count, 5)
+        XCTAssertEqual(StrandPalette.recoveryStops.count, 6)  // nikhil/custom: three hard bands
         XCTAssertEqual(StrandPalette.recoveryStops.first?.location, 0.0)
         XCTAssertEqual(StrandPalette.recoveryStops.last?.location, 1.0)
     }
@@ -35,6 +35,17 @@ final class StrandDesignTests: XCTestCase {
         XCTAssertEqual(high.r, mint.r, accuracy: 0.02)
         XCTAssertEqual(high.g, mint.g, accuracy: 0.02)
         XCTAssertEqual(high.b, mint.b, accuracy: 0.02)
+    }
+
+    /// nikhil/custom: 0–33 red, 34–66 yellow, 67–100 green, with no blending at the edges.
+    func testRecoveryColorFallsInThreeBands() {
+        func same(_ score: Double, _ band: Color) -> Bool {
+            let a = StrandPalette.recoveryColor(score).rgbaComponents, b = band.rgbaComponents
+            return abs(a.r - b.r) < 0.02 && abs(a.g - b.g) < 0.02 && abs(a.b - b.b) < 0.02
+        }
+        for s in [0.0, 20, 33] { XCTAssertTrue(same(s, StrandPalette.recoveryRed), "\(s)") }
+        for s in [34.0, 50, 66] { XCTAssertTrue(same(s, StrandPalette.recoveryYellow), "\(s)") }
+        for s in [67.0, 85, 100] { XCTAssertTrue(same(s, StrandPalette.recoveryGreen), "\(s)") }
     }
 
     func testRecoveryColorClamps() {

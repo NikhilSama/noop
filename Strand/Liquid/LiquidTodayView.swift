@@ -370,7 +370,8 @@ struct LiquidTodayView: View {
                         case .hero:
                             heroCard
                             if chargeLegacyRRGap { ChargeLegacyRRGapNote() }
-                        case .liveSession: if liveSessionsBeta { liveSessionStartRow }
+                        // nikhil/custom: this slot now starts a regular workout (Strand/Custom/TodayWorkoutStartRow).
+                        case .liveSession: if liveSessionsBeta { TodayWorkoutStartRow(cardOpacity: cardOpacity) }
                         case .synthesis: synthesisSection
                         case .keyMetrics: keyMetricsSection
                         case .workouts: lastWorkoutsSection
@@ -707,12 +708,16 @@ struct LiquidTodayView: View {
             // (12.6, not a rounded "13"); the 0–100 hero stays a whole number as before.
             HeroScoreCell(label: String(localized: "Effort"),
                           score: effortStrain(displayDay).map { UnitFormatter.effortValue($0, scale: effortScale) },
-                          tint: StrandPalette.effortColor, animated: dataLoaded,
+                          // nikhil/custom: Halo Cyan that brightens as the day's load climbs.
+                          tint: StrandPalette.effortTint(fraction: (effortStrain(displayDay) ?? 0) / StrainScorer.maxStrain),
+                          animated: dataLoaded,
                           onGuide: { guideSection = .effort },
                           maxValue: effortScale == .whoop ? 21 : 100,
                           decimals: effortScale == .whoop ? 1 : 0,
                           detailRoute: .heroBreakdown(key: HeroRingMetric.effort, day: selectedDayKey))
-            HeroScoreCell(label: String(localized: "Rest"), score: restScore, tint: StrandPalette.restColor,
+            // nikhil/custom: Rest takes the same red / yellow / green bands as Charge.
+            HeroScoreCell(label: String(localized: "Rest"), score: restScore,
+                          tint: restScore.map { StrandPalette.recoveryColor($0) } ?? StrandPalette.restColor,
                           animated: dataLoaded, onGuide: { guideSection = .rest },
                           detailRoute: .heroBreakdown(key: HeroRingMetric.rest, day: selectedDayKey))
                 .overlay(alignment: .top) {

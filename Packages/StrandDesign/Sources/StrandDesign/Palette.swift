@@ -189,37 +189,42 @@ public enum StrandPalette {
         .init(color: Color(light: "#CB3A2F", dark: "#E5483B"), location: 1.0),
     ]
 
-    // MARK: Recovery / Charge gradient — the gold "Charge" colour world.
-    // A single warm metal ramp: a deep bronze floor climbs through brand gold into a
-    // bright champagne peak — no green anywhere; depleted reads as dim gold, not coral.
-    // 0.00 bronze → 0.30 antique gold → 0.55 brand gold → 0.78 soft gold → 1.00 champagne.
-    public static let recovery000 = Color(light: "#C0392B", dark: "#E0463C") // depleted — WHOOP red
-    public static let recovery030 = Color(light: "#D9682A", dark: "#E8743C") // low — red-orange
-    public static let recovery055 = Color(light: "#C99A00", dark: "#F9DF4A") // moderate — WHOOP yellow
-    public static let recovery078 = Color(light: "#6FB23A", dark: "#8FD86A") // primed — yellow-green
-    public static let recovery100 = Color(light: "#0F9D62", dark: "#03E095") // peak — WHOOP green
+    // MARK: Recovery / Charge scale — three XYLO bands (nikhil/custom, option A "Halo").
+    // 0–33 coral red, 34–66 warm yellow, 67–100 Halo Cyan green, as hard bands rather than the
+    // upstream five-step blend, so a score reads as one of three states at a glance. The five
+    // historical names stay as aliases onto the three bands for existing callers.
+    public static let recoveryRed    = Color(light: "#D93A50", dark: "#FF5A6E")
+    public static let recoveryYellow = Color(light: "#C98F12", dark: "#FFC857")
+    public static let recoveryGreen  = Color(light: "#0B9C82", dark: "#36F1CD")
+    public static let recovery000 = recoveryRed
+    public static let recovery030 = recoveryRed
+    public static let recovery055 = recoveryYellow
+    public static let recovery078 = recoveryGreen
+    public static let recovery100 = recoveryGreen
 
-    /// Ordered gradient stops for the recovery scale (Titanium gold ramp, or the Classic red→green).
+    /// Ordered stops for the recovery scale: hard-edged red / yellow / green bands (or Classic red→green).
+    /// Paired stops at the same location make `sample(stops:at:)` step rather than blend.
     public static var recoveryStops: [Gradient.Stop] {
         isClassic ? cRecoveryStops : [
-            .init(color: recovery000, location: 0.00),
-            .init(color: recovery030, location: 0.30),
-            .init(color: recovery055, location: 0.55),
-            .init(color: recovery078, location: 0.78),
-            .init(color: recovery100, location: 1.00),
+            .init(color: recoveryRed, location: 0.0),
+            .init(color: recoveryRed, location: 0.335),
+            .init(color: recoveryYellow, location: 0.335),
+            .init(color: recoveryYellow, location: 0.665),
+            .init(color: recoveryGreen, location: 0.665),
+            .init(color: recoveryGreen, location: 1.0),
         ]
     }
 
     /// The signature recovery gradient (bronze → champagne, or Classic red→green).
     public static var recoveryGradient: Gradient { Gradient(stops: recoveryStops) }
 
-    // MARK: Strain / Effort ramp — the XYLO halo "Effort" colour world (nikhil/custom).
-    // Deep blue → Halo Blue → teal → Halo Cyan peak, the two XYLO brand colours in place of
-    // the upstream amber ramp, so every Effort line, average and tile reads in the brand.
-    public static let strain000 = Color(light: "#1F3F8F", dark: "#2A4FA8") // deep blue
-    public static let strain033 = Color(light: "#2F62D6", dark: "#3D7BFF") // Halo Blue
-    public static let strain066 = Color(light: "#1A8FAF", dark: "#3AB6E6") // teal
-    public static let strain100 = Color(light: "#0B9C82", dark: "#36F1CD") // Halo Cyan
+    // MARK: Strain / Effort ramp — the XYLO Halo Cyan "Effort" colour world (nikhil/custom).
+    // One hue that brightens with load: dim teal on a light day → Halo Cyan → near-white cyan
+    // at the top, in place of the upstream amber ramp.
+    public static let strain000 = Color(light: "#0F5E54", dark: "#16594F") // dim teal
+    public static let strain033 = Color(light: "#0C7A69", dark: "#1F9E89") // mid teal
+    public static let strain066 = Color(light: "#0B9C82", dark: "#36F1CD") // Halo Cyan
+    public static let strain100 = Color(light: "#0DB896", dark: "#A6FFEC") // bright halo
 
     public static var strainStops: [Gradient.Stop] {
         isClassic ? cStrainStops : [
@@ -276,18 +281,18 @@ public enum StrandPalette {
     // full red→green / blue / green→red in Classic regardless of these.
 
     /// Charge (recovery) — gold world / Classic green.
-    public static var chargeColor: Color  { isClassic ? Color(light: "#2E9E4F", dark: "#46B45A") : Color(light: "#0F9D62", dark: "#03E095") }
-    public static var chargeDeep: Color    { isClassic ? Color(light: "#207A3C", dark: "#2E9E4F") : Color(light: "#0B7A4A", dark: "#0B9D62") }
-    public static var chargeBright: Color  { isClassic ? Color(light: "#5FBE6E", dark: "#86D98E") : Color(light: "#5FD89A", dark: "#6BF0B4") }
-    public static var chargeGlow: Color    { isClassic ? Color(light: "#2E9E4F", dark: "#46B45A") : Color(light: "#0F9D62", dark: "#03E095") }
+    public static var chargeColor: Color  { isClassic ? Color(light: "#2E9E4F", dark: "#46B45A") : recoveryGreen } // nikhil/custom
+    public static var chargeDeep: Color    { isClassic ? Color(light: "#207A3C", dark: "#2E9E4F") : Color(light: "#0C7A69", dark: "#1F9E89") }
+    public static var chargeBright: Color  { isClassic ? Color(light: "#5FBE6E", dark: "#86D98E") : Color(light: "#13B897", dark: "#86F7E1") }
+    public static var chargeGlow: Color    { isClassic ? Color(light: "#2E9E4F", dark: "#46B45A") : recoveryGreen }
     /// Diagonal accent pair for the Charge card wash + gauge stroke (deep → bright).
     public static var chargeGradient: Gradient { Gradient(colors: [chargeDeep, chargeBright]) }
 
     /// Effort (strain) — amber world / Classic blue.
-    public static var effortColor: Color   { isClassic ? Color(light: "#3A74C4", dark: "#4A90E2") : Color(light: "#2A78C8", dark: "#4090E0") }
-    public static var effortDeep: Color    { isClassic ? Color(light: "#284F9C", dark: "#2F6FCB") : Color(light: "#1E5B96", dark: "#2A6FB0") }
-    public static var effortBright: Color  { isClassic ? Color(light: "#5E92D6", dark: "#7FB2E8") : Color(light: "#5AA0E0", dark: "#74B6F0") }
-    public static var effortGlow: Color    { isClassic ? Color(light: "#3A74C4", dark: "#4A90E2") : Color(light: "#2A78C8", dark: "#4090E0") }
+    public static var effortColor: Color   { isClassic ? Color(light: "#3A74C4", dark: "#4A90E2") : Color(light: "#0B9C82", dark: "#36F1CD") } // nikhil/custom: Halo Cyan
+    public static var effortDeep: Color    { isClassic ? Color(light: "#284F9C", dark: "#2F6FCB") : Color(light: "#0C7A69", dark: "#1F9E89") }
+    public static var effortBright: Color  { isClassic ? Color(light: "#5E92D6", dark: "#7FB2E8") : Color(light: "#0DB896", dark: "#86F7E1") }
+    public static var effortGlow: Color    { isClassic ? Color(light: "#3A74C4", dark: "#4A90E2") : Color(light: "#0B9C82", dark: "#36F1CD") }
     public static var effortGradient: Gradient { Gradient(colors: [effortDeep, effortBright]) }
 
     /// Rest (sleep) — blue world / Classic indigo.
