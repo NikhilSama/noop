@@ -2298,25 +2298,8 @@ private struct SleepPerformanceNightScene: View {
                 )
                 .allowsHitTesting(false)
 
-                // Extra star sparkle over the photo sky.
-                Canvas { context, size in
-                    for star in stars {
-                        let rect = CGRect(
-                            x: size.width * star.x,
-                            y: size.height * star.y,
-                            width: star.size,
-                            height: star.size
-                        )
-                        context.fill(Path(ellipseIn: rect),
-                                     with: .color(Color.white.opacity(star.opacity)))
-                    }
-                }
-                .allowsHitTesting(false)
-
-                // Near-shore pine silhouettes — original, not Yosemite peaks.
-                pineSilhouette(width: w, height: h)
-                    .fill(Color.black.opacity(0.34))
-                    .allowsHitTesting(false)
+                // nikhil/custom: the drawn stars and pine silhouettes went with the old lake photo; the
+                // XYLO artwork carries its own sky and grid.
 
                 // Soft haze near the waterline / mid-band.
                 LinearGradient(
