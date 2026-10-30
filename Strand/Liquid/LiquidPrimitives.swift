@@ -82,16 +82,9 @@ enum LiquidRender {
         if level > 0.004 {
             let progress = partialArc(center: center, radius: radius, level: level)
 
-            // Contained under-lift — wider stroke, low opacity, no blur.
-            ctx.stroke(progress, with: .color(tint.opacity(0.18)),
-                       style: StrokeStyle(lineWidth: lineWidth + 2.0, lineCap: .round))
-
-            // Progress arc — harsh semantic gradient (visible dark ↔ light bands).
-            ctx.stroke(progress, with: .linearGradient(
-                progressGradient(tint),
-                startPoint: CGPoint(x: rect.minX, y: rect.maxY),
-                endPoint: CGPoint(x: rect.maxX, y: rect.minY)
-            ), style: cap)
+            // nikhil/custom: a flat arc in the score's own colour. No banded metal gradient and no
+            // under-glow, so the ring shows exactly the XYLO colour it was given.
+            ctx.stroke(progress, with: .color(tint), style: cap)
         }
 
         // Outer instrument rim (unchanged placement).
