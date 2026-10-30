@@ -101,14 +101,14 @@ targets:
     info:
       path: Strand/Resources/Info.plist
       properties:
-        CFBundleName: NOOP
-        CFBundleDisplayName: NOOP
+        CFBundleName: XYLO
+        CFBundleDisplayName: XYLO
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "198"
         LSMinimumSystemVersion: "13.0"
         LSApplicationCategoryType: public.app-category.healthcare-fitness
-        NSBluetoothAlwaysUsageDescription: "NOOP connects directly to your WHOOP strap over Bluetooth to read heart rate, R-R intervals, battery, and sensor data locally on your Mac. Nothing leaves your device."
-        NSLocationWhenInUseUsageDescription: "NOOP records your route during an outdoor workout to show distance, pace, and a map. The route stays on your device. Nothing leaves it."
+        NSBluetoothAlwaysUsageDescription: "XYLO connects directly to your WHOOP strap over Bluetooth to read heart rate, R-R intervals, battery, and sensor data locally on your Mac. Nothing leaves your device."
+        NSLocationWhenInUseUsageDescription: "XYLO records your route during an outdoor workout to show distance, pace, and a map. The route stays on your device. Nothing leaves it."
         # The AI Coach's "Custom (OpenAI-compatible)" provider talks to a LOCAL LLM server over plain
         # HTTP on loopback (Ollama / LM Studio / llama.cpp at http://localhost:…). ATS blocks cleartext
         # by default; NSAllowsLocalNetworking exempts loopback/.local/unqualified hosts ONLY — public
@@ -239,8 +239,8 @@ targets:
     info:
       path: StrandiOS/Resources/Info.plist
       properties:
-        CFBundleName: NOOP
-        CFBundleDisplayName: NOOP
+        CFBundleName: XYLO
+        CFBundleDisplayName: XYLO
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         # Surfaces APP_GROUP_ID to runtime (WidgetSnapshot.suiteName) so the App Group id isn't
@@ -249,13 +249,13 @@ targets:
         LSApplicationCategoryType: public.app-category.healthcare-fitness
         UILaunchScreen: {}
         # Alternate app icons (v3 "Titanium & Gold"). The primary icon stays the asset-catalog
-        # AppIcon (machined titanium); the alternate "AppIcon-Navy" (blued titanium) is declared
-        # here so UIApplication.setAlternateIconName("AppIcon-Navy") can switch to it at runtime.
+        # AppIcon (XYLO halo ring); the alternate "AppIcon-Pearl" (pearl and onyx) is declared
+        # here so UIApplication.setAlternateIconName("AppIcon-Pearl") can switch to it at runtime.
         # CFBundleIconFiles is intentionally empty — the artwork lives in the asset catalog, shipped
         # via ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS, so no loose PNGs are listed here.
         CFBundleIcons:
           CFBundleAlternateIcons:
-            AppIcon-Navy:
+            AppIcon-Pearl:
               CFBundleIconFiles: []
               UIPrerenderedIcon: false
         NSSupportsLiveActivities: true
@@ -299,17 +299,17 @@ targets:
           # the re-score task, which is submitted only when a re-score is OWED, and a missing strap owes
           # none, so that task would never run in the one case the warning exists for.
           - $(PRODUCT_BUNDLE_IDENTIFIER).stalebattery
-        NSBluetoothAlwaysUsageDescription: "NOOP connects directly to your WHOOP strap over Bluetooth to read heart rate, R-R intervals, battery, and sensor data locally on your iPhone. Nothing leaves your device."
-        NSLocationWhenInUseUsageDescription: "NOOP records your route during an outdoor workout to show distance, pace, and a map, and keeps recording while the screen is off. The route stays on your device. Nothing leaves it."
-        NSHealthShareUsageDescription: "NOOP reads your own Apple Health data on-device to compute recovery, strain, and sleep. Nothing leaves your device."
-        NSHealthUpdateUsageDescription: "NOOP writes the metrics it computes from your strap back into Apple Health, on-device and only when you allow it."
-        NSMotionUsageDescription: "NOOP reads your iPhone's step count for a walking or running workout to show steps in the activity summary. It stays on your device. Nothing leaves it."
+        NSBluetoothAlwaysUsageDescription: "XYLO connects directly to your WHOOP strap over Bluetooth to read heart rate, R-R intervals, battery, and sensor data locally on your iPhone. Nothing leaves your device."
+        NSLocationWhenInUseUsageDescription: "XYLO records your route during an outdoor workout to show distance, pace, and a map, and keeps recording while the screen is off. The route stays on your device. Nothing leaves it."
+        NSHealthShareUsageDescription: "XYLO reads your own Apple Health data on-device to compute recovery, strain, and sleep. Nothing leaves your device."
+        NSHealthUpdateUsageDescription: "XYLO writes the metrics it computes from your strap back into Apple Health, on-device and only when you allow it."
+        NSMotionUsageDescription: "XYLO reads your iPhone's step count for a walking or running workout to show steps in the activity summary. It stays on your device. Nothing leaves it."
         # K4: Coach voice input. Speech is transcribed ON-DEVICE ONLY (requiresOnDeviceRecognition);
         # the mic button is disabled where the locale doesn't support that, never falls back to
         # server transcription. Only the resulting TEXT reaches the provider, via the same channel
         # a typed question already uses.
-        NSSpeechRecognitionUsageDescription: "NOOP transcribes your question on-device so you can ask the coach out loud instead of typing. Audio never leaves your iPhone."
-        NSMicrophoneUsageDescription: "NOOP uses the microphone to let you ask the coach a question by voice. The audio is transcribed on-device and never leaves your iPhone."
+        NSSpeechRecognitionUsageDescription: "XYLO transcribes your question on-device so you can ask the coach out loud instead of typing. Audio never leaves your iPhone."
+        NSMicrophoneUsageDescription: "XYLO uses the microphone to let you ask the coach a question by voice. The audio is transcribed on-device and never leaves your iPhone."
         # #187: the opt-in AI Coach's "Custom (OpenAI-compatible)" provider can point at a LOCAL LLM on
         # the LAN (Ollama / LM Studio at http://192.168.x.x:11434). ATS blocks cleartext by default;
         # NSAllowsLocalNetworking exempts loopback/.local/private-LAN hosts ONLY — public HTTPS endpoints
@@ -348,7 +348,7 @@ targets:
         # keeps both halves deliberately (#39) and is unaffected.
         PRODUCT_NAME: NOOP
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        # Ship every *.appiconset (not just the primary AppIcon) so the alternate "AppIcon-Navy"
+        # Ship every *.appiconset (not just the primary AppIcon) so the alternate "AppIcon-Pearl"
         # set is compiled into the bundle and is available to UIApplication.setAlternateIconName.
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
         GENERATE_INFOPLIST_FILE: NO
@@ -385,7 +385,7 @@ targets:
     info:
       path: StrandiOSWidgets/Info.plist
       properties:
-        CFBundleDisplayName: NOOP
+        CFBundleDisplayName: XYLO
         # Version keys MUST live here in the generated-Info.plist properties — NOT hand-edited into the
         # file — because xcodegen regenerates StrandiOSWidgets/Info.plist on every `xcodegen generate`
         # (which every release runs for the version bump) and would otherwise rewrite them to its
@@ -439,8 +439,8 @@ targets:
     info:
       path: NOOPWatch/Info.plist
       properties:
-        CFBundleName: NOOP
-        CFBundleDisplayName: NOOP
+        CFBundleName: XYLO
+        CFBundleDisplayName: XYLO
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         # Surfaces APP_GROUP_ID to runtime (WatchScoreStore.suiteName) so the App Group id isn't
@@ -452,8 +452,8 @@ targets:
         # Built from the same $(BUNDLE_ID_PREFIX) rather than $(PRODUCT_BUNDLE_IDENTIFIER) because that
         # build setting would resolve to THIS target's own id, not NOOPiOS's.
         WKCompanionAppBundleIdentifier: $(BUNDLE_ID_PREFIX).noop
-        NSHealthShareUsageDescription: "NOOP reads your heart rate from the Watch sensor to show a live readout on your wrist. It stays on your device."
-        NSHealthUpdateUsageDescription: "NOOP records a basic workout session on your Watch for a higher-fidelity heart rate. The session stays on your device."
+        NSHealthShareUsageDescription: "XYLO reads your heart rate from the Watch sensor to show a live readout on your wrist. It stays on your device."
+        NSHealthUpdateUsageDescription: "XYLO records a basic workout session on your Watch for a higher-fidelity heart rate. The session stays on your device."
         # nikhil/custom: keep the workout session running with the screen down / app in the background
         # (a Lift Log session starts it from the phone).
         WKBackgroundModes: [workout-processing]
@@ -501,7 +501,7 @@ targets:
     info:
       path: NOOPWatchComplications/Info.plist
       properties:
-        CFBundleDisplayName: NOOP
+        CFBundleDisplayName: XYLO
         # Version keys live here as generated-plist properties so xcodegen keeps them lockstep with the
         # parent watch app on every regenerate (mirrors the NOOPiOSWidgets rationale, #416).
         CFBundleShortVersionString: "$(MARKETING_VERSION)"

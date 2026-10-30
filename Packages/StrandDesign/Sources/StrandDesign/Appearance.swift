@@ -88,7 +88,8 @@ public extension View {
 /// `accent`/`accentHover`/`accentMuted`/`focusRing` accessors in `StrandPalette` branch on it. Mirror in
 /// Kotlin via `Palette.accentChoice` + `NoopPrefs.accentColor`/`accentCustomHex`.
 public enum AccentColor: String, CaseIterable, Identifiable, Sendable {
-    case mint        // the brand default (#1068 NoopVisualStyle.mint world)
+    case halo        // nikhil/custom: XYLO Halo Cyan, the brand default
+    case mint        // the upstream NOOP default (#1068 NoopVisualStyle.mint world)
     case whoopBlue   // the classic WHOOP link blue
     case custom      // a user-picked colour (hex stored separately)
 
@@ -101,17 +102,19 @@ public enum AccentColor: String, CaseIterable, Identifiable, Sendable {
 
     public var label: String {
         switch self {
+        case .halo:      return String(localized: "Halo Cyan", bundle: .module)
         case .mint:      return String(localized: "Mint", bundle: .module)
         case .whoopBlue: return String(localized: "WHOOP Blue", bundle: .module)
         case .custom:    return String(localized: "Custom", bundle: .module)
         }
     }
 
-    public static func resolve(_ raw: String) -> AccentColor { AccentColor(rawValue: raw) ?? .mint }
+    public static func resolve(_ raw: String) -> AccentColor { AccentColor(rawValue: raw) ?? .halo }
 
     /// The chrome accent. `.custom` resolves the stored hex at read time.
     public var accent: Color {
         switch self {
+        case .halo:      return AccentColor.haloAccent
         case .mint:      return NoopVisualStyle.mint
         case .whoopBlue: return Color(light: "#234F9E", dark: "#60A0E0")
         case .custom:    return Color(hex: StrandPalette.customAccentHex)
@@ -121,6 +124,7 @@ public enum AccentColor: String, CaseIterable, Identifiable, Sendable {
     /// The brighter hover/pressed accent. For `.custom` it is the chosen colour lightened toward white.
     public var accentHover: Color {
         switch self {
+        case .halo:      return AccentColor.haloAccentGlow
         case .mint:      return NoopVisualStyle.mintGlow
         case .whoopBlue: return Color(light: "#3A6FC0", dark: "#8FBEEC")
         case .custom:    return AccentColor.lighten(StrandPalette.customAccentHex)
@@ -131,6 +135,7 @@ public enum AccentColor: String, CaseIterable, Identifiable, Sendable {
     /// composites over whatever surface is behind it — the same 0.18 the mint world uses.
     public var accentMuted: Color {
         switch self {
+        case .halo:      return AccentColor.haloAccent.opacity(0.18)
         case .mint:      return NoopVisualStyle.mintDeep.opacity(0.18)
         case .whoopBlue: return Color(light: "#234F9E", dark: "#60A0E0").opacity(0.18)
         case .custom:    return Color(hex: StrandPalette.customAccentHex).opacity(0.18)
@@ -138,6 +143,14 @@ public enum AccentColor: String, CaseIterable, Identifiable, Sendable {
     }
 
     public var focusRing: Color { accent }
+
+    /// XYLO Halo Cyan (#36F1CD). Light mode takes a deeper teal so links stay legible on white.
+    static let haloAccent = Color(light: "#0B9C82", dark: "#36F1CD")
+    static let haloAccentGlow = Color(light: "#14B89A", dark: "#86F7E1")
+    /// XYLO Halo Cyan at full strength, for brand artwork that sits on a dark tile in both schemes.
+    public static let haloCyan = Color(hex: "#36F1CD")
+    /// The second brand stop (XYLO Halo Blue), the far end of the ring gradient in `BrandMark`.
+    public static let haloBlue = Color(hex: "#3D7BFF")
 
     /// Blend an sRGB hex toward white by `amount` (0…1) — the deterministic "hover" derivation for a
     /// custom accent, so a single picked colour still gets a sensible brighter pressed state.

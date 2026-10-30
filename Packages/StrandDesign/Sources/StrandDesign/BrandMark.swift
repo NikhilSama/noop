@@ -1,25 +1,18 @@
 import SwiftUI
 
-// MARK: - BrandMark — the NOOP logo mark (Titanium & Gold)
+// MARK: - BrandMark — the XYLO logo mark (nikhil/custom)
 //
 // The app's identity glyph, rendered natively for use as a hero on onboarding,
-// "about", and empty states. Per the design handoff ("Engraved" app-icon
-// direction + the brand glyph spec):
+// "about", and empty states. It mirrors the XYLO app icon:
 //
-//   • a circular DEEP-NAVY tile (Circle filled with the navy ramp, a faint top
-//     sheen, and a 1px hairline rim), over which sits
-//   • an OPEN GOLD recovery ring — an ~80% arc starting at 12 o'clock (-90°) and
-//     sweeping clockwise, stroked with the gold ramp and round-capped (a THICK
-//     stroke to match the app icon), and
-//   • a solid GOLD CORE DOT centred ("on-device core").
+//   • a circular dark tile with a faint top sheen and a hairline rim,
+//   • a faint full-circle track, and over it
+//   • an open "halo" ring, a ~300° arc from 2 o'clock clockwise round to 10
+//     o'clock, shading from Halo Cyan into Halo Blue, round-capped, and
+//   • a small white dot riding the blue end of the ring.
 //
-// Gold-on-navy, matching the app icon (the maintainer's brand direction, 2026-06-15).
-//
-// It reads as the "O" in NOOP and as a small echo of the hero recovery ring.
-// CLEAN and flat by design: no bloom, no shadow, no glow — the titanium does the
-// depth via its gradient + sheen, the gold ring does the accent. Everything is
-// driven off a single `size`, so the mark stays crisp from a 28pt list avatar up
-// to a 120pt onboarding hero.
+// Everything is driven off a single `size`, so the mark stays crisp from a 28pt
+// list avatar up to a 120pt onboarding hero.
 
 public struct BrandMark: View {
 
@@ -30,28 +23,27 @@ public struct BrandMark: View {
         self.size = size
     }
 
-    // The open ring sweeps ~80% of a full turn (≈291° of 364, per the logo spec),
-    // starting at 12 o'clock and going clockwise — the same orientation as the
-    // hero recovery ring, so the two read as one family.
-    private let openFraction: Double = 0.80
-    private var startAngle: Angle { .degrees(-90) }
+    // The ring starts at the cyan end (about 2 o'clock) and sweeps clockwise to the
+    // blue end (about 10 o'clock), leaving the gap at the top like the icon.
+    private let startDegrees: Double = -60
+    private let spanDegrees: Double = 300
 
     // Proportions derived from `size` so the mark is resolution-independent.
-    private var ringInset: CGFloat { size * 0.20 }          // tile edge → ring band
-    private var ringWidth: CGFloat { size * 0.13 }          // THICK gold stroke (matches the icon)
-    private var ringDiameter: CGFloat { size - ringInset * 2 }
-    private var coreDiameter: CGFloat { size * 0.18 }       // centre core dot
+    private var ringWidth: CGFloat { size * 0.085 }
+    private var ringDiameter: CGFloat { size * 0.56 }
+    private var dotDiameter: CGFloat { size * 0.06 }
     private var rimWidth: CGFloat { max(1, size * 0.008) }  // ~1px hairline rim
 
     public var body: some View {
         ZStack {
             navyTile
-            goldRing
-            coreDot
+            track
+            haloRing
+            endDot
         }
         .frame(width: size, height: size)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("NOOP"))
+        .accessibilityLabel(Text("XYLO"))
         .accessibilityAddTraits(.isImage)
     }
 
@@ -87,33 +79,44 @@ public struct BrandMark: View {
             )
     }
 
-    // MARK: Open gold recovery ring
+    // MARK: Halo ring
 
-    /// The open ~80% gold arc — round-capped, stroked with the gold ramp via an
-    /// AngularGradient so the metal shifts along the sweep (light → gold → deep),
-    /// matching how the hero recovery ring fills.
-    private var goldRing: some View {
+    /// The faint full circle the halo sits on.
+    private var track: some View {
+        Circle()
+            .inset(by: ringWidth / 2)
+            .stroke(Color.white.opacity(0.07), lineWidth: ringWidth)
+            .frame(width: ringDiameter, height: ringDiameter)
+    }
+
+    /// The open arc, Halo Cyan at the start shading to Halo Blue at the end.
+    private var haloRing: some View {
         RecoveryArc(
-            startAngle: startAngle,
-            spanDegrees: 360 * openFraction,
+            startAngle: .degrees(startDegrees),
+            spanDegrees: spanDegrees,
             fraction: 1,
             lineWidth: ringWidth
         )
         .stroke(
-            StrandPalette.chargeColor,
+            AngularGradient(
+                colors: [AccentColor.haloCyan, AccentColor.haloBlue],
+                center: .center,
+                startAngle: .degrees(startDegrees),
+                endAngle: .degrees(startDegrees + spanDegrees)
+            ),
             style: StrokeStyle(lineWidth: ringWidth, lineCap: .round)
         )
         .frame(width: ringDiameter, height: ringDiameter)
     }
 
-    // MARK: Solid gold core
-
-    /// The "on-device core" — a solid gold dot at the exact centre, completing the
-    /// open-ring + core-dot lock-up.
-    private var coreDot: some View {
-        Circle()
+    /// The white dot on the blue end of the ring.
+    private var endDot: some View {
+        let angle = (startDegrees + spanDegrees) * .pi / 180
+        let r = (ringDiameter - ringWidth) / 2
+        return Circle()
             .fill(Color.white)
-            .frame(width: coreDiameter, height: coreDiameter)
+            .frame(width: dotDiameter, height: dotDiameter)
+            .offset(x: r * cos(angle), y: r * sin(angle))
     }
 }
 

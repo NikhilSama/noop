@@ -270,7 +270,7 @@ enum FolderBackup {
     /// the gap was never the choosing — it was that the result was unidentifiable afterwards. A user on
     /// the internal fallback saw a bare "Backups" and could not tell their backups were on-device only.
     static func folderLabel() -> String? {
-        if useInternalFolder { return String(localized: "NOOP (in Files)") }
+        if useInternalFolder { return String(localized: "XYLO (in Files)") }
         guard let path = resolveFolder()?.path else { return nil }
         let trail = folderTrail(path: path)
         if isICloudPath(path) {
@@ -513,7 +513,7 @@ enum FolderBackup {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.prompt = String(localized: "Choose")
-        panel.message = String(localized: "Choose a folder for NOOP backups (for example a Google Drive or iCloud folder).")
+        panel.message = String(localized: "Choose a folder for XYLO backups (for example a Google Drive or iCloud folder).")
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         saveFolder(url)
         return url

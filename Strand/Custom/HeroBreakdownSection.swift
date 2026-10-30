@@ -375,7 +375,7 @@ private struct RestComposition: View {
                         stats: nil, current: nil, goodness: .neutral, format: fmt0)
                     StageBar(row: row)
                     if let shown, abs(shown - parts.total) >= 1 {
-                        BreakdownNote(text: "This day's Rest score came from an imported source, so the parts above are NOOP's own estimate and may not add up to it exactly.")
+                        BreakdownNote(text: "This day's Rest score came from an imported source, so the parts above are XYLO's own estimate and may not add up to it exactly.")
                     }
                     NavigationLink(value: TabRoute.sleep) {
                         HStack {

@@ -141,7 +141,7 @@ struct WatchLiftView: View {
         case .active, .paused, .ending, .saved:
             EmptyView()
         case .denied, .unavailable:
-            Text("Health access off: Watch Settings → Health → NOOP")
+            Text("Health access off: Watch Settings → Health → XYLO")
                 .font(StrandFont.caption).foregroundStyle(StrandPalette.recoveryColor(0))
                 .lineLimit(2).multilineTextAlignment(.center)
         case .requesting:

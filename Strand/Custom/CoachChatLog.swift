@@ -57,7 +57,7 @@ enum CoachChatLog {
     }
 
     static func markdown(_ file: DayFile, user: String) -> String {
-        var s = "# NOOP Coach — \(user) — \(file.day)\n"
+        var s = "# XYLO Coach — \(user) — \(file.day)\n"
         let time = DateFormatter()
         time.locale = Locale(identifier: "en_US_POSIX")
         time.dateFormat = "HH:mm"

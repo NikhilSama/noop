@@ -940,7 +940,7 @@ public final class LiveState: ObservableObject {
         #else
         let osName = "macOS"
         #endif
-        var header = "NOOP strap log (scheduled export) — \(osName)\nApp: \(Self.appIdentityLine)\n\(osName): "
+        var header = "XYLO strap log (scheduled export) — \(osName)\nApp: \(Self.appIdentityLine)\n\(osName): "
             + ProcessInfo.processInfo.operatingSystemVersionString + "\n"
         // #453: the BODY is scrubbed as it is appended, but these header lines come from the diagnostics
         // block and never pass through that path - and they carry device ids, which embed a BLE address
@@ -1184,7 +1184,7 @@ public final class LiveState: ObservableObject {
         #else
         let osName = "macOS"
         #endif
-        var header = "NOOP strap log - \(osName)\nApp: \(Self.appIdentityLine)\n\(osName): "
+        var header = "XYLO strap log - \(osName)\nApp: \(Self.appIdentityLine)\n\(osName): "
             + ProcessInfo.processInfo.operatingSystemVersionString + "\n"
         #if os(iOS)
         let diagLines = IOSDiagnostics.capture().summaryLines()

@@ -72,6 +72,6 @@ final class CustomCoachChatLogTests: XCTestCase {
             .init(id: "a", role: "user", text: "Train?", firstSeen: 0, order: 0),
         ]), user: "nikhil")
         XCTAssertLessThan(md.range(of: "Train?")!.lowerBound, md.range(of: "Rest today.")!.lowerBound)
-        XCTAssertTrue(md.hasPrefix("# NOOP Coach — nikhil — 2026-10-28"))
+        XCTAssertTrue(md.hasPrefix("# XYLO Coach — nikhil — 2026-10-28"))
     }
 }

@@ -65,7 +65,7 @@ enum CoachTools {
     /// Appended to the system prompt when tools are on: today's date (for date ranges) and how to use them.
     static func promptNote(now: Date = Date()) -> String {
         "Today is \(dayFormatter.string(from: now)). You have tools: get_daily_metrics, get_workouts, "
-            + "get_lift_sessions and get_body_measurements read the user's own NOOP history; use them whenever a "
+            + "get_lift_sessions and get_body_measurements read the user's own XYLO history; use them whenever a "
             + "question needs more than the summary above (trends, comparisons, specific dates, lift progress). "
             + "web_search finds current research and facts; use it when evidence or up-to-date information "
             + "matters, and name your sources briefly. Don't use tools for simple questions the summary answers."
