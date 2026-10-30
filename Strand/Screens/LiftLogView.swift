@@ -26,6 +26,8 @@ struct LiftLogView: View {
     /// The program being created or edited (nil = the editor is closed).
     @State private var editing: ProgramEditTarget?
     @State private var importing = false
+    /// nikhil/custom: the "Import with Coach" sheet (Strand/Custom/LiftProgramCoachImportSheet).
+    @State private var importingWithCoach = false
     /// The live session, owned at the app root so it survives this screen going away.
     @EnvironmentObject private var session: LiftSessionController
     /// Recent finished sessions, newest first.
@@ -61,6 +63,9 @@ struct LiftLogView: View {
         }
         .sheet(isPresented: $importing) {
             LiftProgramImportSheet { await load() }
+        }
+        .sheet(isPresented: $importingWithCoach) {
+            LiftProgramCoachImportSheet { await load() }
         }
         .sheet(item: $viewing) { target in
             LiftSessionDetailSheet(session: target.session) { await load() }
@@ -131,6 +136,14 @@ struct LiftLogView: View {
                 }
                 .buttonStyle(NoopButtonStyle(.secondary))
             }
+
+            // nikhil/custom: describe a workout (typed or spoken) and let the Coach's model build it.
+            Button {
+                importingWithCoach = true
+            } label: {
+                Label("Import with Coach", systemImage: "sparkles")
+            }
+            .buttonStyle(NoopButtonStyle(.secondary))
         }
     }
 

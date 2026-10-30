@@ -1144,6 +1144,15 @@ final class AICoachEngine: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
+    /// nikhil/custom: a single request outside the chat, for features that borrow the Coach's model (the
+    /// Lift Log's "Import with Coach"). Same provider, model and key as the chat, but none of its context:
+    /// no history, no health summary, no prompt addendum, only the caller's prompt and text.
+    func oneShot(systemPrompt: String, text: String) async throws -> String {
+        guard isConfigured, let key = resolvedKey else { throw AICoachError.noKey }
+        return try await provider.client.send(key: key, model: model, systemPrompt: systemPrompt,
+                                              messages: [(role: .user, content: text)], session: session)
+    }
+
     /// Dispatch to the user's chosen provider client.
     private func callProvider(key: String,
                               messages: [(role: ChatMessage.Role, content: String)]) async throws -> String {
