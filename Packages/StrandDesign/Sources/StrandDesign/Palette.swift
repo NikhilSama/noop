@@ -138,7 +138,7 @@ public enum StrandPalette {
     /// Opacity for dimmed/disabled sections (shared so screens don't invent their own value).
     public static let disabledOpacity: Double = 0.45
     /// Liquid-scene activity tint shared by heart-rate feedback and transient sync chrome.
-    public static let liquidHeart = Color(light: "#D94C64", dark: "#FF6B81")
+    public static var liquidHeart: Color { xyloPink } // nikhil/custom
 
     // MARK: - Chart style (data-viz colour mode) — Titanium (brand) or Classic (throwback)
     //
@@ -188,6 +188,17 @@ public enum StrandPalette {
         .init(color: Color(light: "#CFA528", dark: "#F2C53D"), location: 0.5),
         .init(color: Color(light: "#CB3A2F", dark: "#E5483B"), location: 1.0),
     ]
+
+    // MARK: XYLO brand colours (nikhil/custom)
+    // The five colours every data colour in the default (non-Classic) chart style resolves to: the two
+    // brand halo colours and the three Aurora score bands. Light-mode values are deepened for white.
+    public static let xyloCyan       = Color(light: "#0B9C82", dark: "#36F1CD") // Halo Cyan
+    public static let xyloBlue       = Color(light: "#2F62D6", dark: "#3D7BFF") // Halo Blue
+    public static let xyloBlueDeep   = Color(light: "#1F3F8F", dark: "#2A4FA8")
+    public static let xyloBlueBright = Color(light: "#5B8BEA", dark: "#8FB0FF")
+    public static var xyloPink: Color  { recoveryRed }
+    public static var xyloLemon: Color { recoveryYellow }
+    public static var xyloMint: Color  { recoveryGreen }
 
     // MARK: Recovery / Charge scale — three XYLO bands (nikhil/custom, option B "Aurora").
     // 0–33 magenta-pink, 34–66 lemon, 67–100 mint green, as hard bands rather than the
@@ -243,31 +254,31 @@ public enum StrandPalette {
     // Awake white-grey #CAC8CB, Light periwinkle #A7A4F4, SWS/Deep orchid-pink #FD96FD, REM purple
     // #AE5BEF — because the previous three near-identical blues made a fragmented on-device
     // hypnogram unreadable. Light-mode variants are the same hues darkened for contrast on white.
-    public static var sleepAwake: Color { isClassic ? cSleepAwake : Color(light: "#8E949E", dark: "#CAC8CB") }
-    public static var sleepLight: Color { isClassic ? cSleepLight : Color(light: "#7B78E0", dark: "#A7A4F4") }
-    public static var sleepDeep:  Color { isClassic ? cSleepDeep  : Color(light: "#C13EC1", dark: "#FD96FD") }
-    public static var sleepREM:   Color { isClassic ? cSleepREM   : Color(light: "#8E3BD6", dark: "#AE5BEF") }
+    public static var sleepAwake: Color { isClassic ? cSleepAwake : xyloPink }
+    public static var sleepLight: Color { isClassic ? cSleepLight : xyloBlue }
+    public static var sleepDeep:  Color { isClassic ? cSleepDeep  : xyloCyan }
+    public static var sleepREM:   Color { isClassic ? cSleepREM   : xyloLemon }
 
     // MARK: HR zones — Titanium cool→warm (no green), or the Classic grey→green→yellow→orange→red.
-    public static var zone1: Color { isClassic ? cZone1 : Color(light: "#3A80D6", dark: "#4A90E2") }
-    public static var zone2: Color { isClassic ? cZone2 : Color(light: "#2E92B4", dark: "#3FA9C9") }
-    public static var zone3: Color { isClassic ? cZone3 : Color(light: "#C28E26", dark: "#E8B84B") }
-    public static var zone4: Color { isClassic ? cZone4 : Color(light: "#C2792E", dark: "#D98A3D") }
-    public static var zone5: Color { isClassic ? cZone5 : Color(light: "#C84E1E", dark: "#E0662F") }
+    public static var zone1: Color { isClassic ? cZone1 : xyloBlue }
+    public static var zone2: Color { isClassic ? cZone2 : xyloCyan }
+    public static var zone3: Color { isClassic ? cZone3 : xyloMint }
+    public static var zone4: Color { isClassic ? cZone4 : xyloLemon }
+    public static var zone5: Color { isClassic ? cZone5 : xyloPink }
 
     /// HR zones indexed 1...5; index 0 mirrors zone1 for convenience.
     public static var hrZones: [Color] { [zone1, zone1, zone2, zone3, zone4, zone5] }
 
     // MARK: Status — Titanium gold/amber/orange, or the Classic green/amber/red.
-    public static var statusPositive: Color { isClassic ? Color(light: "#2E9E4F", dark: "#46B45A") : Color(light: "#1F8A5B", dark: "#03E095") }
-    public static var statusWarning:  Color { isClassic ? Color(light: "#CFA528", dark: "#F2C53D") : Color(light: "#C2792E", dark: "#F0A020") }
-    public static var statusCritical: Color { isClassic ? Color(light: "#CB3A2F", dark: "#E5483B") : Color(light: "#C84E1E", dark: "#E0662F") }
+    public static var statusPositive: Color { isClassic ? Color(light: "#2E9E4F", dark: "#46B45A") : xyloMint }
+    public static var statusWarning:  Color { isClassic ? Color(light: "#CFA528", dark: "#F2C53D") : xyloLemon }
+    public static var statusCritical: Color { isClassic ? Color(light: "#CB3A2F", dark: "#E5483B") : xyloPink }
 
     // MARK: Per-metric accents — HRV / SpO₂ / energy / risk. Classic leans the traditional hues (purple HRV, red risk).
-    public static var metricCyan:   Color { isClassic ? Color(light: "#2E92B4", dark: "#3FA9C9") : Color(light: "#2E92B4", dark: "#3FA9C9") }
-    public static var metricPurple: Color { isClassic ? Color(light: "#6A4FC0", dark: "#8E6FD6") : Color(light: "#3A80D6", dark: "#4A90E2") }
-    public static var metricAmber:  Color { isClassic ? Color(light: "#CFA528", dark: "#F2C53D") : Color(light: "#1A8FAF", dark: "#3AB6E6") } // nikhil/custom: teal, not amber
-    public static var metricRose:   Color { isClassic ? Color(light: "#CB3A2F", dark: "#E5483B") : Color(light: "#C84E1E", dark: "#E0662F") }
+    public static var metricCyan:   Color { isClassic ? Color(light: "#2E92B4", dark: "#3FA9C9") : xyloCyan }
+    public static var metricPurple: Color { isClassic ? Color(light: "#6A4FC0", dark: "#8E6FD6") : xyloBlue }
+    public static var metricAmber:  Color { isClassic ? Color(light: "#CFA528", dark: "#F2C53D") : xyloLemon } // nikhil/custom
+    public static var metricRose:   Color { isClassic ? Color(light: "#CB3A2F", dark: "#E5483B") : xyloPink }
 
     // MARK: - Titanium & Gold domain "colour worlds" (NEW)
     //
@@ -296,10 +307,10 @@ public enum StrandPalette {
     public static var effortGradient: Gradient { Gradient(colors: [effortDeep, effortBright]) }
 
     /// Rest (sleep) — blue world / Classic indigo.
-    public static var restColor: Color     { isClassic ? Color(light: "#3A80D6", dark: "#6FA8E8") : Color(light: "#5E7896", dark: "#83A0B8") }
-    public static var restDeep: Color      { isClassic ? Color(light: "#203E73", dark: "#2A4C8F") : Color(light: "#234F9E", dark: "#2F6FCB") }
-    public static var restBright: Color    { isClassic ? Color(light: "#6A4FC0", dark: "#8E6FD6") : Color(light: "#5790DA", dark: "#6FA8E8") }
-    public static var restGlow: Color      { isClassic ? Color(light: "#3A80D6", dark: "#6FA8E8") : Color(light: "#3A80D6", dark: "#4A90E2") }
+    public static var restColor: Color     { isClassic ? Color(light: "#3A80D6", dark: "#6FA8E8") : xyloBlue }
+    public static var restDeep: Color      { isClassic ? Color(light: "#203E73", dark: "#2A4C8F") : xyloBlueDeep }
+    public static var restBright: Color    { isClassic ? Color(light: "#6A4FC0", dark: "#8E6FD6") : xyloBlueBright }
+    public static var restGlow: Color      { isClassic ? Color(light: "#3A80D6", dark: "#6FA8E8") : xyloBlue }
     /// The Rest family's most legible LINE colour — for strokes that must read on a busy or translucent
     /// surface, such as the body-clock dial's arcs over a custom background image.
     ///
@@ -313,10 +324,10 @@ public enum StrandPalette {
     public static var restGradient: Gradient { Gradient(colors: [restDeep, restBright]) }
 
     /// Stress — blue→gold→orange world / Classic green→amber→red.
-    public static var stressColor: Color   { isClassic ? Color(light: "#CFA528", dark: "#F2C53D") : Color(light: "#C7891A", dark: "#F0A020") }
-    public static var stressDeep: Color    { isClassic ? Color(light: "#2E9E4F", dark: "#46B45A") : Color(light: "#3A80D6", dark: "#4A90E2") }
-    public static var stressBright: Color  { isClassic ? Color(light: "#CB3A2F", dark: "#E5483B") : Color(light: "#C84E1E", dark: "#E0662F") }
-    public static var stressGlow: Color    { isClassic ? Color(light: "#CFA528", dark: "#F2C53D") : Color(light: "#C7891A", dark: "#F0A020") }
+    public static var stressColor: Color   { isClassic ? Color(light: "#CFA528", dark: "#F2C53D") : xyloLemon }
+    public static var stressDeep: Color    { isClassic ? Color(light: "#2E9E4F", dark: "#46B45A") : xyloMint }
+    public static var stressBright: Color  { isClassic ? Color(light: "#CB3A2F", dark: "#E5483B") : xyloPink }
+    public static var stressGlow: Color    { isClassic ? Color(light: "#CFA528", dark: "#F2C53D") : xyloLemon }
     /// 3-stop gauge ramp: calm → balanced → high.
     public static var stressGradient: Gradient { Gradient(colors: [stressDeep, stressColor, stressBright]) }
 
@@ -339,11 +350,11 @@ public enum StrandPalette {
 
     /// Brand gold — primary accent. Gold FILLS stay bright (dark text on them is legible in both schemes);
     /// only a hair deeper on light so the fill doesn't wash out against white.
-    public static let gold          = Color(light: "#3A78C8", dark: "#60A0E0") // repointed to WHOOP blue (gold killed 2026-06-22)
+    public static let gold          = xyloBlue // nikhil/custom: XYLO Halo Blue (was WHOOP blue, gold before that)
     /// Bright blue — accent highlight / hover (was champagne).
-    public static let goldLight     = Color(light: "#6FA8E0", dark: "#9FC8F0")
+    public static let goldLight     = xyloBlueBright
     /// Deep blue — accent low stop (was bronze).
-    public static let goldDeep      = Color(light: "#2A5C9E", dark: "#3A78C8")
+    public static let goldDeep      = xyloBlueDeep
     /// Near-black brown — text / icons placed ON gold surfaces (scheme-invariant; gold fills stay gold).
     public static let goldDeepText  = Color(hex: "#FFFFFF") // white text/icons on accent fills (WHOOP, gold killed)
     /// The bright core dot at a gauge arc tip / sparkline head. White reads as a highlight on the dark
@@ -351,7 +362,7 @@ public enum StrandPalette {
     /// crisp centre on the (deepened) coloured tip bead.
     public static let tipCore       = Color(light: "#241B06", dark: "#FFFFFF")
     /// High-vis signal yellow — sparing emphasis (badges / alerts); deepened on light to stay visible.
-    public static let signalYellow  = Color(light: "#E8A800", dark: "#FFD63D")
+    public static var signalYellow: Color { xyloLemon } // nikhil/custom
     /// 135–155° gold ramp for buttons, ring fills, FAB (light → gold → deep).
     public static let goldGradient  = Gradient(colors: [goldLight, gold, goldDeep])
 

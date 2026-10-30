@@ -543,7 +543,8 @@ struct SleepView: View {
                 VStack(spacing: 8) {
                     LiquidScoreGauge(
                         score: score,
-                        tint: StrandPalette.restColor,
+                        // nikhil/custom: the same three score bands as Charge and Rest on Today.
+                        tint: StrandPalette.recoveryColor(score),
                         diameter: 184,
                         animated: true,
                         captionText: String(localized: "of 100"),

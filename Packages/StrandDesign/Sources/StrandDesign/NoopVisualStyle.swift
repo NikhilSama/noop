@@ -22,9 +22,9 @@ public enum NoopVisualStyle {
     public static let secondaryText = Color(light: "#555861", dark: "#C3C4CA")
     public static let tertiaryText = Color(light: "#7D808A", dark: "#7D7F88")
 
-    public static let mint = Color(light: "#149A78", dark: "#69DDB8")
-    public static let mintDeep = Color(light: "#0D765C", dark: "#13A982")
-    public static let mintGlow = Color(light: "#38C99E", dark: "#54E6BD")
+    public static let mint = Color(light: "#0B9C82", dark: "#36F1CD") // nikhil/custom: Halo Cyan
+    public static let mintDeep = Color(light: "#0C7A69", dark: "#1F9E89")
+    public static let mintGlow = Color(light: "#13B897", dark: "#86F7E1")
 
     public static let cardRadius: CGFloat = 22
     public static let compactRadius: CGFloat = 16

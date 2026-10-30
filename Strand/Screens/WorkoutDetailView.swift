@@ -722,9 +722,9 @@ struct WorkoutRouteMap: RouteMapRepresentable {
 /// Effort-amber so it reads in the same colour world as the rest of the screen on both platforms.
 private enum RoutePlatformColor {
     #if canImport(UIKit)
-    static let effort = UIColor(red: 0.98, green: 0.62, blue: 0.16, alpha: 1.0)
+    static let effort = UIColor(red: 0.212, green: 0.945, blue: 0.804, alpha: 1.0) // nikhil/custom: Halo Cyan
     #elseif canImport(AppKit)
-    static let effort = NSColor(red: 0.98, green: 0.62, blue: 0.16, alpha: 1.0)
+    static let effort = NSColor(red: 0.212, green: 0.945, blue: 0.804, alpha: 1.0) // nikhil/custom: Halo Cyan
     #endif
 }
 #else
