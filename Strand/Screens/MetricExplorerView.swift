@@ -1432,15 +1432,19 @@ struct MetricDetailView: View {
         let caption = rangeCaption(effectiveRange: effectiveRange,
                                    windowed: windowed,
                                    windowFellBack: windowFellBack)
-        return VStack(alignment: .leading, spacing: 8) {
-            SegmentedPillControl(ExploreRange.allCases, selection: selectionBinding,
-                                 adaptsToAvailableWidth: true,
-                                 isEnabled: isUnlocked) { $0.label }
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            Text(caption)
-                .font(StrandFont.footnote)
-                .foregroundStyle(windowFellBack ? StrandPalette.statusWarning : StrandPalette.textTertiary)
-                .accessibilityLabel(caption)
+        // A labelled card rather than a bare pill row, so it reads as the control for the charts below.
+        return NoopCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Chart range").strandOverline()
+                SegmentedPillControl(ExploreRange.allCases, selection: selectionBinding,
+                                     adaptsToAvailableWidth: true,
+                                     isEnabled: isUnlocked) { $0.label }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(caption)
+                    .font(StrandFont.footnote)
+                    .foregroundStyle(windowFellBack ? StrandPalette.statusWarning : StrandPalette.textTertiary)
+                    .accessibilityLabel(caption)
+            }
         }
     }
 
