@@ -182,6 +182,11 @@ struct SleepView: View {
                             .padding(.horizontal, -16)
                             .padding(.top, -24)
                             .staggeredAppear(index: 0)
+                        // nikhil/custom: what shaped this night's Rest, for the night the hero shows (filed
+                        // under the wake day, the same key `performanceScore(for:)` reads).
+                        RestShapedItCard(day: Repository.localDayKey(Date(timeIntervalSince1970:
+                            TimeInterval(heroNight(resolved).session.endTs))))
+                            .staggeredAppear(index: 0)
                         alarmsEntry
                         // #sleep-layout: the analytical cards render in the user's saved order minus the
                         // hidden set, below the pinned Rest hero. Reordered via the Arrange sheet.

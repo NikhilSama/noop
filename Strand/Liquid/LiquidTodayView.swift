@@ -719,7 +719,8 @@ struct LiquidTodayView: View {
             HeroScoreCell(label: String(localized: "Rest"), score: restScore,
                           tint: restScore.map { StrandPalette.recoveryColor($0) } ?? StrandPalette.restColor,
                           animated: dataLoaded, onGuide: { guideSection = .rest },
-                          detailRoute: .heroBreakdown(key: HeroRingMetric.rest, day: selectedDayKey))
+                          // nikhil/custom: Rest opens the Sleep screen, which now carries its breakdown.
+                          detailRoute: .sleep)
                 .overlay(alignment: .top) {
                     if let sourceLabel = heroSourceLabel {
                         SourceBadge("\(sourceLabel)", tint: StrandPalette.textSecondary)

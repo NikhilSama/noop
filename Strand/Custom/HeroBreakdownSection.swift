@@ -323,6 +323,17 @@ struct RestParts {
     var total: Double { durationPts + efficiencyPts + restorativePts + consistencyPts }
 }
 
+/// nikhil/custom: the Rest "what shaped it" card on its own, for the Sleep screen. Uses the same
+/// remembered breakdown range as the metric detail page (default 3 months).
+struct RestShapedItCard: View {
+    let day: String
+    @AppStorage("custom.heroBreakdownRange") private var rangeRaw = ExploreRange.quarter.rawValue
+
+    var body: some View {
+        RestComposition(day: day, range: ExploreRange(rawValue: rangeRaw) ?? .quarter)
+    }
+}
+
 private struct RestComposition: View {
     let day: String
     let range: ExploreRange
