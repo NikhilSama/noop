@@ -55,6 +55,10 @@ struct WatchLiftView: View {
     private enum Field { case weight, reps }
     @State private var field: Field = .weight
     @State private var crown: Double = 0
+    /// The last whole crown click acted on. The crown reports fractional positions between clicks, so
+    /// edits count whole clicks against this rather than rounding each small change (which dropped slow
+    /// turns entirely and let fast ones jump).
+    @State private var crownTick = 0
     @State private var weight: Double = 0      // display unit
     @State private var reps: Double = 0
     @State private var shownSlot: String = ""
@@ -111,7 +115,7 @@ struct WatchLiftView: View {
             .focused($crownFocused)
             .digitalCrownRotation($crown, from: -10_000, through: 10_000, by: 1,
                                   sensitivity: .low, isContinuous: false, isHapticFeedbackEnabled: true)
-            .onChange(of: crown) { old, new in nudge(by: new - old, step: s.weightStep) }
+            .onChange(of: crown) { _, new in crownMoved(to: new) }
             .onAppear { crownFocused = true }
             Button {
                 lift.send(LiftWatchAction(
@@ -214,13 +218,26 @@ struct WatchLiftView: View {
         crownFocused = true
     }
 
-    private func nudge(by delta: Double, step: Double) {
-        guard delta != 0 else { return }
-        let ticks = delta.rounded()
-        switch field {
-        case .weight: weight = max(0, (weight + ticks * step) / step).rounded() * step
-        case .reps: reps = max(0, reps + ticks)
+    /// One crown click = one step: the weight moves by `weightStep(for:)`, reps by one.
+    private func crownMoved(to value: Double) {
+        let tick = Int(value.rounded())
+        let clicks = tick - crownTick
+        guard clicks != 0 else { return }
+        crownTick = tick
+        for _ in 0..<abs(clicks) {
+            switch field {
+            case .weight:
+                let step = Self.weightStep(for: weight)
+                weight = max(0, weight + (clicks > 0 ? step : -step))
+            case .reps:
+                reps = max(0, reps + (clicks > 0 ? 1 : -1))
+            }
         }
+    }
+
+    /// About 5% of the current weight, rounded up to a whole kg (or lb), and never less than one.
+    static func weightStep(for weight: Double) -> Double {
+        max(1, (weight * 0.05).rounded(.up))
     }
 
     /// Take the phone's numbers when the focus moves to a new set; keep crown edits while it stays.
