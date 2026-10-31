@@ -253,24 +253,9 @@ struct LiveWorkoutView: View {
                     .padding(.vertical, NoopMetrics.space1)
                     .background(tint.opacity(0.12), in: Capsule())
             }
-            HStack(spacing: 6) {
-                ForEach(1...5, id: \.self) { z in
-                    let active = z == zone
-                    let color = StrandPalette.hrZoneColor(z)
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(active ? color : color.opacity(0.18))
-                        .frame(height: active ? 44 : 34)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(active ? color : StrandPalette.hairline, lineWidth: 1)
-                        )
-                        .overlay(
-                            Text("Z\(z)")
-                                .font(StrandFont.captionNumber)
-                                .foregroundStyle(active ? StrandPalette.surfaceBase : StrandPalette.textTertiary)
-                        )
-                }
-            }
+            // nikhil/custom: minutes per zone so far, as bars (was five tiles marking only the current zone).
+            LiveZoneBars(minutes: LiveZoneMinutes.minutes(model.activeWorkout?.samples ?? [], zones: zoneSet),
+                         currentZone: zone)
             if let band = zoneSet.zones.first(where: { $0.number == zone }) {
                 Text("Zone \(zone): \(Int(band.lower))-\(Int(band.upper)) bpm (\(Int(band.lowerPct * 100))-\(Int(band.upperPct * 100))% max HR)")
                     .font(StrandFont.footnote).foregroundStyle(StrandPalette.textTertiary)

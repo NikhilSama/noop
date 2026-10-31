@@ -1306,7 +1306,50 @@ final class HealthKitBridge: ObservableObject {
             store.execute(q)
         }
         guard !orphans.isEmpty else { return }
-        _ = try? await store.delete(orphans)
+        await deleteWorkoutsWithAttachedSamples(orphans)
+    }
+
+    /// nikhil/custom: the energy / distance sample types `writeWorkouts` attaches through its builder.
+    private static let workoutAttachedSampleIds: [HKQuantityTypeIdentifier] = [
+        .activeEnergyBurned, .distanceWalkingRunning, .distanceCycling,
+    ]
+
+    /// nikhil/custom: delete workouts we wrote AND the samples attached to them. Deleting an `HKWorkout`
+    /// does not take its builder-added samples with it, which is the assumption the notes above flag as
+    /// unverified: on device it left the workout's active energy in Health with no workout above it (the
+    /// "energy but no session" report). The children are found through `predicateForObjects(from:)`,
+    /// i.e. by their association with that exact workout, scoped to our own source, so this never sweeps
+    /// energy written by the Watch, another app, or our own vitals path.
+    private func deleteWorkoutsWithAttachedSamples(_ workouts: [HKWorkout]) async {
+        guard !workouts.isEmpty else { return }
+        for workout in workouts {
+            for id in Self.workoutAttachedSampleIds {
+                guard let t = HKQuantityType.quantityType(forIdentifier: id),
+                      store.authorizationStatus(for: t) == .sharingAuthorized else { continue }
+                let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
+                    HKQuery.predicateForObjects(from: HKSource.default()),
+                    HKQuery.predicateForObjects(from: workout),
+                ])
+                _ = try? await store.deleteObjects(of: t, predicate: pred)
+            }
+        }
+        _ = try? await store.delete(workouts)
+    }
+
+    /// nikhil/custom: our own workouts carrying any of `keys`, read back so they can be deleted with
+    /// their attached samples rather than by a bare predicate delete that strands the children.
+    private func ourWorkouts(withKeys keys: [String]) async -> [HKWorkout] {
+        let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            HKQuery.predicateForObjects(from: HKSource.default()),
+            HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID, allowedValues: keys),
+        ])
+        return await withCheckedContinuation { (cont: CheckedContinuation<[HKWorkout], Never>) in
+            let q = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: pred,
+                                  limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                cont.resume(returning: (samples ?? []).compactMap { $0 as? HKWorkout })
+            }
+            store.execute(q)
+        }
     }
 
     private func writeWorkouts(whoopStore: WhoopStore, fromTs: Int, toTs: Int) async throws {
@@ -1370,12 +1413,7 @@ final class HealthKitBridge: ObservableObject {
         func remember() { if readComplete { HealthWriteDiff.save(fingerprints, "workouts") } }
 
         guard !toWrite.isEmpty else { remember(); return }
-        let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
-            HKQuery.predicateForObjects(from: HKSource.default()),
-            HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID,
-                                        allowedValues: toWrite.map(key)),
-        ])
-        _ = try? await store.deleteObjects(of: .workoutType(), predicate: pred)
+        await deleteWorkoutsWithAttachedSamples(await ourWorkouts(withKeys: toWrite.map(key)))
 
         for row in toWrite {
             let start = Date(timeIntervalSince1970: TimeInterval(row.startTs))

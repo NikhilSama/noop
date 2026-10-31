@@ -1115,6 +1115,11 @@ final class AppModel: ObservableObject {
             if let store = await self.repo.storeHandle() {
                 _ = try? await store.upsertWorkouts([row], deviceId: self.deviceId)
                 await self.repo.refresh()
+                // nikhil/custom: put the session in Apple Health now, not at the next strap offload or
+                // background wake, which is why a just-finished workout looked missing from Health.
+                #if os(iOS)
+                await self.healthWriteBack?()
+                #endif
             }
         }
     }
