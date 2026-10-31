@@ -190,6 +190,7 @@ struct RootTabView: View {
         .sheet(item: $quickAction) { action in
             quickActionDestination(action)
         }
+        .journalDailyPrompt()   // nikhil/custom
         // Live's "Manage devices" affordance (and any future cross-screen link to Devices) routes here:
         // present the Devices manager in its own nav stack, the same way the quick-action screens do.
         .sheet(isPresented: $showDevices) {

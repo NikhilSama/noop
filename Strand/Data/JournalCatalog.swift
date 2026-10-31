@@ -241,7 +241,13 @@ final class JournalCatalogStore: ObservableObject {
 
     /// Change an item's type. `.numeric` carries an optional unit label (e.g. "mg", "units").
     func setKind(_ canonical: String, to kind: JournalKind) {
-        edit(canonical) { $0.kind = kind }
+        edit(canonical) { $0.kind = kind; $0.defaultValue = nil }   // a yes/no default is not a number
+    }
+
+    /// nikhil/custom: the answer "Good to go" logs when the day has none (nil clears it). Yes/No items
+    /// store 1 / 0; numeric items store the value.
+    func setDefault(_ canonical: String, to value: Double?) {
+        edit(canonical) { $0.defaultValue = value }
     }
 
     // MARK: - Custom add / remove / restore (v1 API preserved)
@@ -338,6 +344,9 @@ struct JournalCatalogItem: Equatable, Codable, Identifiable {
     var hidden: Bool
     /// True for a user-added question (deletable); false for a starter/imported one (hideable only).
     var custom: Bool
+    /// nikhil/custom: the usual answer, logged by "Good to go" (Yes/No: 1 = yes, 0 = no). Optional, so
+    /// blobs saved before it existed still decode.
+    var defaultValue: Double?
 
     var id: String { canonical }
 
@@ -347,7 +356,7 @@ struct JournalCatalogItem: Equatable, Codable, Identifiable {
     }
 
     init(canonical: String, displayName: String?, kind: JournalKind, group: JournalGroup,
-         sortIndex: Int, hidden: Bool, custom: Bool) {
+         sortIndex: Int, hidden: Bool, custom: Bool, defaultValue: Double? = nil) {
         self.canonical = canonical
         self.displayName = displayName
         self.kind = kind
@@ -355,5 +364,6 @@ struct JournalCatalogItem: Equatable, Codable, Identifiable {
         self.sortIndex = sortIndex
         self.hidden = hidden
         self.custom = custom
+        self.defaultValue = defaultValue
     }
 }

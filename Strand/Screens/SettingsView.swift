@@ -162,6 +162,8 @@ struct SettingsView: View {
     /// "Journal reminder" (#627, default ON). When ON, Today shows the persistent journal widget
     /// (last-7-days strip + tap-through). Mirrors the Android `NoopPrefs.KEY_JOURNAL_REMINDER_ENABLED`.
     @AppStorage(PuffinExperiment.journalReminderKey) private var journalReminderEnabled = true
+    /// nikhil/custom: open the journal on the first app open of each day.
+    @AppStorage(JournalDailyPromptPrefs.enabledKey) private var journalDailyPromptEnabled = false
 
     /// Opt-in "Keep screen on during a workout" (default OFF, #703). When ON, the live-workout view
     /// holds the screen awake while a manual recording is running so you can glance at your live HR
@@ -1737,6 +1739,21 @@ struct SettingsView: View {
                 .accessibilityHint("Show a Today card reminding you to log your journal")
 
                 Text("Show a Today card reminding you to log your journal")
+                    .font(StrandFont.caption)
+                    .foregroundStyle(StrandPalette.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                rowDivider
+
+                Toggle(isOn: $journalDailyPromptEnabled) {
+                    Text("Ask on first open each day")
+                        .font(StrandFont.subhead)
+                        .foregroundStyle(StrandPalette.textPrimary)
+                }
+                .toggleStyle(.switch)
+                .tint(StrandPalette.accent)
+
+                Text("The first time you open the app each day, the journal opens with your default answers marked. Tap Good to go, or change what was different.")
                     .font(StrandFont.caption)
                     .foregroundStyle(StrandPalette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -28,10 +28,15 @@ struct JournalLogCard: View {
     let numericAnswers: [String: Double]
     @Binding var dayOffset: Int            // -1 = tomorrow, 0 = today, 1 = yesterday
     let onChanged: () -> Void              // parent re-runs load() after a write
+    /// nikhil/custom: the morning pop-up's stripped form — title + questions only (no day picker,
+    /// explainer, Edit, Use defaults or add row).
+    let compact: Bool
 
     init(importedQuestions: [String], answers: [String: Bool],
          numericAnswers: [String: Double] = [:], dayOffset: Binding<Int>,
+         compact: Bool = false,
          onChanged: @escaping () -> Void) {
+        self.compact = compact
         self.importedQuestions = importedQuestions
         self.answers = answers
         self.numericAnswers = numericAnswers
@@ -49,6 +54,9 @@ struct JournalLogCard: View {
     /// The item being renamed (drives the rename sheet).
     @State private var renaming: JournalCatalogItem?
     @State private var renameDraft = ""
+    /// nikhil/custom: the numeric item whose default is being set (drives the default sheet).
+    @State private var settingDefault: JournalCatalogItem?
+    @State private var defaultDraft = ""
 
     private var dayKey: String {
         Repository.localDayKey(
@@ -79,20 +87,37 @@ struct JournalLogCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: NoopMetrics.gap) {
+            if compact {
+                Text("Journal")
+                    .font(StrandFont.headline)
+                    .foregroundStyle(StrandPalette.textPrimary)
+            } else {
             HStack(alignment: .center) {
                 SectionHeader("Journal", overline: "Log")
                 Spacer()
                 if editing {
                     pillButton("Done", selected: true) { editing = false }
                 } else {
+                    // nikhil/custom: log every default this day has no answer for.
+                    if hasPendingDefaults {
+                        pillButton("Use defaults", selected: false) {
+                            Task {
+                                await JournalDefaults.apply(day: dayKey, repo: repo,
+                                                            importedQuestions: importedQuestions,
+                                                            answers: answers, numericAnswers: numericAnswers)
+                                onChanged()
+                            }
+                        }
+                    }
                     pillButton("Edit", selected: false) { editing = true }
                 }
+            }
             }
             // Day picker (#656): a bounded, scrollable range — Tomorrow back through the last 7 days — so
             // any recent day can be backfilled (was Yesterday/Today/Tomorrow only). Chronological
             // left→right; snaps to the selected day, so a deep-link from the Today journal widget lands on
             // that day's pill. Only when not editing.
-            if !editing {
+            if !editing && !compact {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
@@ -112,6 +137,7 @@ struct JournalLogCard: View {
             }
             NoopCard(tint: StrandPalette.restColor) {
                 VStack(alignment: .leading, spacing: 10) {
+                    if !compact {
                     Text(editing
                          ? "Rename, regroup, or remove an item to tidy your list. Renaming keeps the original question behind the scenes, so a WHOOP import still lines up. Custom items are deleted; built-in ones are hidden and can be restored below."
                          : dayOffset == -1
@@ -120,17 +146,69 @@ struct JournalLogCard: View {
                         .font(StrandFont.footnote)
                         .foregroundStyle(StrandPalette.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     ForEach(JournalGroup.displayOrder, id: \.self) { group in
                         groupBlock(group)
                     }
 
-                    Divider().overlay(StrandPalette.hairline)
-                    addRow
+                    if !compact {
+                        Divider().overlay(StrandPalette.hairline)
+                        addRow
+                    }
                 }
             }
         }
         .sheet(item: $renaming) { item in renameSheet(item) }
+        .sheet(item: $settingDefault) { item in defaultSheet(item) }
+    }
+
+    /// nikhil/custom: a default exists for some question this day has not answered.
+    private var hasPendingDefaults: Bool {
+        resolved.contains { item in
+            item.defaultValue != nil
+                && (item.kind.isNumeric ? numericAnswers[item.canonical] == nil : answers[item.canonical] == nil)
+        }
+    }
+
+    /// nikhil/custom: "Default: Yes" / "Default: 2 mg" caption for edit mode.
+    private func defaultCaption(_ item: JournalCatalogItem) -> String? {
+        guard let v = item.defaultValue else { return nil }
+        if item.kind.isNumeric {
+            let n = v == v.rounded() ? String(Int(v)) : String(format: "%.1f", v)
+            return String(localized: "Default: \(n)") + (item.kind.unitLabel.map { " \($0)" } ?? "")
+        }
+        return v >= 0.5 ? String(localized: "Default: Yes") : String(localized: "Default: No")
+    }
+
+    private func defaultSheet(_ item: JournalCatalogItem) -> some View {
+        VStack(alignment: .leading, spacing: NoopMetrics.gap) {
+            Text("Default value").font(StrandFont.headline)
+            Text(verbatim: item.display).font(StrandFont.subhead).foregroundStyle(StrandPalette.textSecondary)
+            TextField("Value", text: $defaultDraft)
+                .textFieldStyle(.roundedBorder)
+            #if os(iOS)
+                .keyboardType(.decimalPad)
+            #endif
+            Text("Logged by Good to go on days you leave this unanswered.")
+                .font(StrandFont.footnote)
+                .foregroundStyle(StrandPalette.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Cancel") { settingDefault = nil }
+                    .buttonStyle(.bordered)
+                Spacer()
+                Button("Save") {
+                    if let v = Double(defaultDraft.replacingOccurrences(of: ",", with: ".")) {
+                        catalog.setDefault(item.canonical, to: v)
+                    }
+                    settingDefault = nil
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(NoopMetrics.space4)
+        .frame(minWidth: 320)
     }
 
     // MARK: - Group block
@@ -170,17 +248,24 @@ struct JournalLogCard: View {
 
     @ViewBuilder private func itemRow(_ item: JournalCatalogItem) -> some View {
         HStack {
-            Text(verbatim: item.display)   // display = rename ?? canonical; data, not a UI literal
-                .font(StrandFont.body)
-                .foregroundStyle(item.hidden ? StrandPalette.textTertiary : StrandPalette.textPrimary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: item.display)   // display = rename ?? canonical; data, not a UI literal
+                    .font(StrandFont.body)
+                    .foregroundStyle(item.hidden ? StrandPalette.textTertiary : StrandPalette.textPrimary)
+                if editing, let caption = defaultCaption(item) {
+                    Text(verbatim: caption)
+                        .font(StrandFont.caption)
+                        .foregroundStyle(StrandPalette.textTertiary)
+                }
+            }
             Spacer()
             if editing {
                 editControls(item)
             } else if item.kind.isNumeric {
                 numericField(item)
             } else {
-                answerPill("Yes", q: item.canonical, value: true)
-                answerPill("No", q: item.canonical, value: false)
+                answerPill("Yes", q: item.canonical, value: true, isDefault: item.defaultValue.map { $0 >= 0.5 } == true)
+                answerPill("No", q: item.canonical, value: false, isDefault: item.defaultValue.map { $0 < 0.5 } == true)
             }
         }
     }
@@ -193,7 +278,7 @@ struct JournalLogCard: View {
             stepperButton("minus", q: item.canonical, current: current)
             NumericLogField(
                 value: current,
-                placeholder: "—",
+                placeholder: item.defaultValue.map { $0 == $0.rounded() ? String(Int($0)) : String(format: "%.1f", $0) } ?? "—",
                 onCommit: { v in commitNumeric(item.canonical, value: v) })
             .frame(width: 64)
             if let unit = item.kind.unitLabel, !unit.isEmpty {
@@ -249,6 +334,21 @@ struct JournalLogCard: View {
                     Menu("Group") {
                         ForEach(JournalGroup.displayOrder, id: \.self) { g in
                             Button(g.title) { catalog.setGroup(item.canonical, to: g) }
+                        }
+                    }
+                    // nikhil/custom: the usual answer, logged by Good to go / Use defaults.
+                    Menu("Default answer") {
+                        if item.kind.isNumeric {
+                            Button("Set default…") {
+                                defaultDraft = item.defaultValue.map { $0 == $0.rounded() ? String(Int($0)) : String($0) } ?? ""
+                                settingDefault = item
+                            }
+                        } else {
+                            Button("Yes") { catalog.setDefault(item.canonical, to: 1) }
+                            Button("No") { catalog.setDefault(item.canonical, to: 0) }
+                        }
+                        if item.defaultValue != nil {
+                            Button("No default") { catalog.setDefault(item.canonical, to: nil) }
                         }
                     }
                     if item.kind.isNumeric {
@@ -370,9 +470,10 @@ struct JournalLogCard: View {
         }
     }
 
-    private func answerPill(_ label: LocalizedStringKey, q: String, value: Bool) -> some View {
+    private func answerPill(_ label: LocalizedStringKey, q: String, value: Bool, isDefault: Bool = false) -> some View {
         let selected = answers[q] == value
-        return pillButton(label, selected: selected) {
+        // nikhil/custom: an unanswered question shows its default as a ghost (outlined) choice.
+        return pillButton(label, selected: selected, ghost: isDefault && answers[q] == nil) {
             Task {
                 // Tri-state: re-tapping the filled chip clears the answer (natural-key delete,
                 // scoped to "noop-journal", imported rows can never be removed this way).
@@ -386,18 +487,20 @@ struct JournalLogCard: View {
         }
     }
 
-    private func pillButton(_ label: LocalizedStringKey, selected: Bool,
+    private func pillButton(_ label: LocalizedStringKey, selected: Bool, ghost: Bool = false,
                             action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
                 .font(StrandFont.footnote)
-                .foregroundStyle(selected ? StrandPalette.surfaceBase : StrandPalette.textSecondary)
+                .foregroundStyle(selected ? StrandPalette.surfaceBase
+                                 : ghost ? StrandPalette.restColor : StrandPalette.textSecondary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
-                .background(selected ? StrandPalette.restColor : StrandPalette.surfaceInset,
+                .background(selected ? StrandPalette.restColor
+                            : ghost ? StrandPalette.restColor.opacity(0.15) : StrandPalette.surfaceInset,
                             in: Capsule())
-                .overlay(Capsule().stroke(selected ? StrandPalette.restColor : StrandPalette.hairline,
-                                          lineWidth: 1))
+                .overlay(Capsule().stroke(selected || ghost ? StrandPalette.restColor : StrandPalette.hairline,
+                                          style: StrokeStyle(lineWidth: 1, dash: ghost ? [3, 2] : [])))
         }
         .buttonStyle(.plain)
     }
