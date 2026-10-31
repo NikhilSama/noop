@@ -109,6 +109,8 @@ final class AppModel: ObservableObject {
     /// True while the active workout is a GPS-type session (drives the End-time route persist). Mirrors
     /// Android's `ActiveWorkout.gpsEnabled`.
     private var activeWorkoutIsGps = false
+    /// nikhil/custom: 1 Hz interval clock while an interval workout runs (AppModel+Intervals).
+    var intervalTicker: Timer?
 
     /// A manual workout in progress. `samples` accumulate from the smoothed live `bpm`; `liveStrain`
     /// is recomputed as the window grows so the active card can show strain building in real time.
@@ -124,6 +126,8 @@ final class AppModel: ObservableObject {
         var peakHr: Int = 0
         var pausedAt: Date?
         var pausedDuration: TimeInterval = 0
+        /// nikhil/custom: the interval plan's running clock, when the workout was started in interval mode.
+        var intervals: IntervalSession?
 
         var isPaused: Bool { pausedAt != nil }
 
@@ -853,6 +857,7 @@ final class AppModel: ObservableObject {
         // unconditional assign re-renders every bpm observer (Live, menu bar, widgets) for nothing.
         let smoothed = vals.isEmpty ? nil : Int(vals[vals.count / 2].rounded())
         if bpm != smoothed { bpm = smoothed }
+        tickIntervals()   // nikhil/custom: strap packets keep the interval clock moving with the screen off
         captureWorkoutSample()
         evaluateStress()
     }
@@ -863,7 +868,7 @@ final class AppModel: ObservableObject {
     /// name; callers that don't pick a sport get the catalogue default "Other", parity with Android's
     /// `startWorkout(sport:)`). The active card on Live then shows elapsed time, live HR and strain
     /// building; End scores + saves it under this sport. Confirms with a single buzz. (#519)
-    func startWorkout(sport: String = WorkoutCatalog.defaultSportName) {
+    func startWorkout(sport: String = WorkoutCatalog.defaultSportName, intervals: IntervalPlan? = nil) {
         guard activeWorkout == nil else { return }
         lastWorkout = nil
         let name = sport.trimmingCharacters(in: .whitespaces)
@@ -886,7 +891,8 @@ final class AppModel: ObservableObject {
         // off (the gate is one UserDefaults bool read), so the lifecycle of a missing workout is visible.
         emitWorkoutsTrace(WorkoutsTrace.sessionLine(
             event: "start", sportKey: WorkoutSource.traceSportKey(resolved), hrSamples: 0))
-        buzz(loops: 1, gate: HapticPrefs.workout)
+        // nikhil/custom: an interval workout opens with its first block's cue instead of the start buzz.
+        if let intervals { startIntervals(intervals, at: started) } else { buzz(loops: 1, gate: HapticPrefs.workout) }
     }
 
     /// Emit one Workouts & GPS test-mode line tagged `.workouts` iff the mode is on. The cheap
@@ -958,6 +964,7 @@ final class AppModel: ObservableObject {
         w.pausedAt = snap.pausedAtSec.map { Date(timeIntervalSince1970: TimeInterval($0)) }
         w.pausedDuration = TimeInterval(snap.pausedDurationSec ?? 0)
         activeWorkout = w
+        rehydrateIntervals()   // nikhil/custom
 
         // Rebuild the transient GPS lifecycle flag as well as the durable workout value. Without this,
         // a distance workout restored after an OS kill resumes as a non-GPS workout: Resume never
@@ -986,11 +993,13 @@ final class AppModel: ObservableObject {
         }
         activeWorkout = w
         persistActiveWorkout()
+        syncIntervalsToWorkoutPause()   // nikhil/custom
     }
 
     /// Abort the active session without saving a workout.
     func discardWorkout() {
         guard activeWorkout != nil else { return }
+        stopIntervals(saving: nil)   // nikhil/custom
         activeWorkout = nil
         if activeWorkoutIsGps { gpsRecorder.stop() }
         activeWorkoutIsGps = false
@@ -1015,6 +1024,7 @@ final class AppModel: ObservableObject {
 
     func endWorkout() {
         guard let w = activeWorkout else { return }
+        stopIntervals(saving: w)   // nikhil/custom
         activeWorkout = nil
         let wasGps = activeWorkoutIsGps
         activeWorkoutIsGps = false
@@ -1939,6 +1949,8 @@ final class AppModel: ObservableObject {
     /// HR-zone haptic coaching: buzz when crossing into the top zone (ease off) or back to recovery.
     private func coachZone(_ hr: Int?) {
         guard behavior.zoneCoaching, live.bonded, live.worn, let hr, hr >= 30 else { return }
+        // nikhil/custom: interval workouts own the strap's buzz vocabulary; zone coaching sits them out.
+        guard activeWorkout?.intervals == nil else { return }
         guard profile.hrMax > 0 else { return }
         // #531: route the haptic coach through the profile's effective zone set (personalized when set,
         // conventional %HRmax otherwise) instead of hardcoded percentage bands.

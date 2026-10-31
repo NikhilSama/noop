@@ -88,6 +88,8 @@ struct WorkoutDetailView: View {
             routeCard
             hrCurveCard
             zonesCard
+            // nikhil/custom: per-block breakdown of an interval-mode workout (renders nothing otherwise).
+            IntervalBreakdownCard(row: row, zones: profile.hrZoneSet)
             heartRateRecoveryCard
             if let strain = row.strain {
                 effortCard(strain: strain)

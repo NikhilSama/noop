@@ -40,10 +40,10 @@ struct TodayWorkoutStartRow: View {
                 .environmentObject(model.live)
         }
         .workoutSelectionCover(isPresented: $showStartSport) {
-            StartWorkoutSheet { name in
-                model.startWorkout(sport: name)
+            StartWorkoutSheet(onStartWorkout: { name, plan in
+                model.startWorkout(sport: name, intervals: plan)
                 showLiveWorkout = true
-            }
+            })
         }
     }
 }

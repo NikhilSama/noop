@@ -11,6 +11,8 @@ import StrandDesign
 /// merge-name prompt can reuse the same browser.
 struct StartWorkoutSheet: View {
     let onStart: (_ sport: String) -> Void
+    /// nikhil/custom: set by the live-start sheets, which offer interval mode; nil for the merge-name reuse.
+    private var onStartWorkout: ((_ sport: String, _ intervals: IntervalPlan?) -> Void)?
     private let heading: String
     private let explainer: String
     private let actionVerb: String
@@ -24,9 +26,15 @@ struct StartWorkoutSheet: View {
         self.actionVerb = actionVerb ?? String(localized: "Start")
     }
 
+    /// nikhil/custom: a live start that can go through interval setup first.
+    init(onStartWorkout: @escaping (_ sport: String, _ intervals: IntervalPlan?) -> Void) {
+        self.init(onStart: { onStartWorkout($0, nil) })
+        self.onStartWorkout = onStartWorkout
+    }
+
     var body: some View {
         WorkoutSelectionScreen(heading: heading, explainer: explainer, actionVerb: actionVerb,
-                               onStart: onStart)
+                               onStart: onStart, onStartWorkout: onStartWorkout)
     }
 }
 
@@ -37,10 +45,16 @@ struct WorkoutSelectionScreen: View {
     let explainer: String
     let actionVerb: String
     let onStart: (_ sport: String) -> Void
+    var onStartWorkout: ((_ sport: String, _ intervals: IntervalPlan?) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @FocusState private var searchFocused: Bool
+    // nikhil/custom: interval mode. The toggle sends the next pick through setup; an activity already in
+    // interval mode (IntervalWorkoutPrefs) goes through setup on its own.
+    @State private var intervalsToggle = false
+    @State private var setupSport: String?
+    @State private var showSetup = false
 
     private var trimmedQuery: String { query.trimmingCharacters(in: .whitespaces) }
     private var filtered: [WorkoutCatalog.Sport] { WorkoutCatalog.matching(query) }
@@ -54,6 +68,7 @@ struct WorkoutSelectionScreen: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: NoopMetrics.space5) {
                     headerCopy
+                    if onStartWorkout != nil { intervalsRow }
                     WorkoutSearchField(query: $query, isFocused: $searchFocused)
                         .padding(.top, NoopMetrics.space1)
 
@@ -85,6 +100,14 @@ struct WorkoutSelectionScreen: View {
             .scrollDismissesKeyboard(.interactively)
             .background {
                 StrandPalette.surfaceBase.ignoresSafeArea()
+            }
+            .navigationDestination(isPresented: $showSetup) {
+                if let sport = setupSport {
+                    IntervalSetupView(sport: sport) { plan in
+                        onStartWorkout?(sport, plan)
+                        dismiss()
+                    }
+                }
             }
             .navigationBarTitleDisplayModeCompat()
             .toolbar {
@@ -156,8 +179,32 @@ struct WorkoutSelectionScreen: View {
     private func select(_ name: String) {
         searchFocused = false
         RecentSportsPrefs.recordSelection(name)
-        onStart(name)
+        if let onStartWorkout {
+            if intervalsToggle || IntervalWorkoutPrefs.isEnabled(sport: name) {
+                setupSport = name
+                showSetup = true
+                return
+            }
+            onStartWorkout(name, nil)
+        } else {
+            onStart(name)
+        }
         dismiss()
+    }
+
+    private var intervalsRow: some View {
+        Toggle(isOn: $intervalsToggle) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Intervals")
+                    .font(StrandFont.headline)
+                    .foregroundStyle(StrandPalette.textPrimary)
+                Text("Set work and rest blocks after you pick. Activities you've done as intervals open setup on their own.")
+                    .font(StrandFont.footnote)
+                    .foregroundStyle(StrandPalette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(StrandPalette.effortColor)
     }
 }
 

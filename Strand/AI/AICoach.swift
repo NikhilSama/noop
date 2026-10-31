@@ -1379,6 +1379,11 @@ final class AICoachEngine: ObservableObject {
             if let dist = w.distanceM {
                 parts.append(UnitFormatter.distanceFromMeters(dist, system: distanceSystem))
             }
+            // nikhil/custom: an interval-mode workout adds its block summary and the last same-plan session.
+            if let l = await IntervalSummary.load(startTs: w.startTs, sport: w.sport, repo: repo,
+                                                  zones: ProfileStore().hrZoneSet) {
+                parts.append(IntervalSummary.coachLine(l))
+            }
             lines.append(parts.joined(separator: ", "))
         }
         return lines.joined(separator: "\n")

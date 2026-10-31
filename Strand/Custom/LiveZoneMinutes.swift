@@ -29,14 +29,16 @@ enum LiveZoneMinutes {
 }
 
 /// Five bars, Z1…Z5, scaled to the largest so far; the zone the wearer is in now is drawn solid, the rest
-/// tinted, so "where am I" survives the switch from tiles to bars.
+/// tinted, so "where am I" survives the switch from tiles to bars. In an interval workout each bar also
+/// carries an on-pace marker: the minutes the plan expects in that zone by now.
 struct LiveZoneBars: View {
     let minutes: [Double]
     let currentZone: Int
+    var targets: [Double]? = nil
     private let plotHeight: CGFloat = 96
 
     var body: some View {
-        let top = max(minutes.max() ?? 0, 1.0 / 60)
+        let top = max(minutes.max() ?? 0, targets?.max() ?? 0, 1.0 / 60)
         HStack(alignment: .bottom, spacing: 6) {
             ForEach(1...5, id: \.self) { z in
                 let m = minutes[z - 1]
@@ -54,16 +56,37 @@ struct LiveZoneBars: View {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .strokeBorder(active ? color : .clear, lineWidth: 1.5)
                         )
+                        // Only an interval workout pins the plot height, so its markers share one scale;
+                        // a plain workout keeps the label riding on top of its bar.
+                        .frame(height: targets == nil ? nil : plotHeight, alignment: .bottom)
+                        .overlay(alignment: .bottom) {
+                            if let t = targets?[z - 1], t > 0 { paceMarker(height: plotHeight * CGFloat(t / top)) }
+                        }
                     Text("Z\(z)")
                         .font(StrandFont.captionNumber)
                         .foregroundStyle(active ? color : StrandPalette.textTertiary)
                 }
                 .frame(maxWidth: .infinity)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Text("Zone \(z), \(LiveZoneMinutes.label(m))"))
+                .accessibilityLabel(Text(accessibilityText(zone: z, minutes: m)))
             }
         }
         .frame(height: plotHeight + 44, alignment: .bottom)
         .animation(.easeOut(duration: 0.4), value: minutes)
+    }
+
+    /// A bar-wide tick at the on-pace height, with a small notch so it reads over a bar of any colour.
+    private func paceMarker(height: CGFloat) -> some View {
+        Capsule()
+            .fill(StrandPalette.textPrimary)
+            .frame(height: 3)
+            .padding(.horizontal, -3)
+            .shadow(color: StrandPalette.surfaceBase.opacity(0.8), radius: 1)
+            .offset(y: -max(0, height - 1.5))
+    }
+
+    private func accessibilityText(zone z: Int, minutes m: Double) -> String {
+        guard let t = targets?[z - 1], t > 0 else { return "Zone \(z), \(LiveZoneMinutes.label(m))" }
+        return "Zone \(z), \(LiveZoneMinutes.label(m)), on pace for \(LiveZoneMinutes.label(t))"
     }
 }

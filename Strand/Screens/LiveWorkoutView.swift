@@ -45,19 +45,30 @@ struct LiveWorkoutView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: NoopMetrics.sectionSpacing) {
-                let cards: [AnyView] = [
+                // nikhil/custom: an interval workout leads with the block ring (heart rate inside it) and the
+                // zone bars with their on-pace markers; elapsed time and effort follow.
+                let cards: [AnyView] = model.activeWorkout?.intervals.map { session in [
+                    AnyView(header),
+                    AnyView(LiveIntervalHero(session: session, zone: zone)),
+                    AnyView(zoneSection),
+                    AnyView(timeBlock),
+                    AnyView(effortGauge),
+                    AnyView(statsGrid),
+                ] } ?? [
                     AnyView(header),
                     AnyView(timeBlock),
                     AnyView(heartRateBlock),
                     AnyView(effortGauge),
                     AnyView(zoneSection),
                     AnyView(statsGrid),
+                ]
+                let trailing: [AnyView] = [
                     // Live GPS distance + pace (#1195) — a self-gating leaf owning its own recorder
                     // observation, so a GPS fix re-renders only this card. Renders nothing until the first
                     // accepted fix, so non-GPS / denied sessions leave the stack unchanged.
                     AnyView(DistancePaceRowIfPresent(recorder: model.gpsRecorder)),
                 ]
-                ForEach(Array(cards.enumerated()), id: \.offset) { index, card in
+                ForEach(Array((cards + trailing).enumerated()), id: \.offset) { index, card in
                     card.staggeredAppear(index: index)
                 }
                 // Live-observing leaf: renders the sensor row (and its entrance stagger) only when a
@@ -86,6 +97,17 @@ struct LiveWorkoutView: View {
             ScenicHeroBackground(domain: .effort)
                 .ignoresSafeArea()
         }
+        #if os(iOS)
+        // nikhil/custom: the phone mirrors each interval cue (it fires whether or not a strap is bonded).
+        .sensoryFeedback(trigger: model.activeWorkout?.intervals?.cueCount ?? 0) { _, _ in
+            switch model.activeWorkout?.intervals?.lastCue {
+            case .work: return .impact(weight: .heavy)
+            case .rest, .headsUp: return .impact(weight: .light)
+            case .done: return .success
+            case nil: return nil
+            }
+        }
+        #endif
         // If the workout ended elsewhere (process restart cleared it), close the screen.
         .onChangeCompat(of: model.activeWorkout == nil) { gone in if gone { onClose() } }
         // Arm the realtime HR stream while the in-exercise screen is up (#681). On a WHOOP 5/MG live HR
@@ -255,7 +277,8 @@ struct LiveWorkoutView: View {
             }
             // nikhil/custom: minutes per zone so far, as bars (was five tiles marking only the current zone).
             LiveZoneBars(minutes: LiveZoneMinutes.minutes(model.activeWorkout?.samples ?? [], zones: zoneSet),
-                         currentZone: zone)
+                         currentZone: zone,
+                         targets: model.activeWorkout?.intervals?.paceTargets(at: Date()))
             if let band = zoneSet.zones.first(where: { $0.number == zone }) {
                 Text("Zone \(zone): \(Int(band.lower))-\(Int(band.upper)) bpm (\(Int(band.lowerPct * 100))-\(Int(band.upperPct * 100))% max HR)")
                     .font(StrandFont.footnote).foregroundStyle(StrandPalette.textTertiary)
