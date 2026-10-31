@@ -312,7 +312,7 @@ struct StressView: View {
                         // can exceed both hourly neighbours when the busy stretch straddles a boundary,
                         // so `day.peak` would caption the line with a number below its visible maximum.
                         // Everything that COUNTS hours still reads `hours`; a maximum is not a count.
-                        let drawnPeak = day.timeline.filter { $0.level != nil }
+                        let drawnPeak = day.fineTimeline.filter { $0.level != nil }
                             .max { ($0.level ?? 0) < ($1.level ?? 0) }
                         if let peak = drawnPeak, let lvl = peak.level {
                             Text("peak \(StressTrace.formatLevel(lvl)) · \(hourLabel(peak.hour))")
@@ -326,10 +326,10 @@ struct StressView: View {
                     // The SLIDING series, not the bare hours (#2144). Everything that COUNTS hours
                     // keeps reading `hours`: the totals bar's shares still have to sum to the day.
                     // Only the line and its ruler follow the finer read.
-                    DaytimeLoadLine(hours: day.timeline)
+                    DaytimeLoadLine(hours: day.fineTimeline)   // nikhil/custom: minute-by-minute
 
                     // Hour ruler under the line (first / midday / last covered hour).
-                    if let lo = day.timeline.first?.hour, let hi = day.timeline.last?.hour {
+                    if let lo = day.fineTimeline.first?.hour, let hi = day.fineTimeline.last?.hour {
                         HStack {
                             Text(hourLabel(lo)).font(StrandFont.footnote)
                                 .foregroundStyle(StrandPalette.textTertiary)
@@ -379,8 +379,8 @@ struct StressView: View {
     /// `Text(_:)` would resolve to the verbatim, non-localized `String` overload).
     private var daytimeTimelineCaption: LocalizedStringKey {
         daytimeUsesPersonalBaseline
-            ? "The line is each waking hour's 0-3 proxy, scored against your personal daytime baseline (how your own days usually run). The bar below splits your day into calm, moderate and high stress time."
-            : "The line is each waking hour's 0-3 proxy, scored against your own calm hours today. The bar below splits your day into calm, moderate and high stress time."
+            ? "The line is a rolling 10-minute 0-3 read, updated every minute and scored against your personal daytime baseline (how your own days usually run). Stretches where you were moving are left out. The bar below splits your day into calm, moderate and high stress time."
+            : "The line is a rolling 10-minute 0-3 read, updated every minute and scored against your own calm stretches today. Stretches where you were moving are left out. The bar below splits your day into calm, moderate and high stress time."
     }
 
     /// A passive, in-app nudge to run a Breathe session after a sustained high-stress run.
@@ -1162,7 +1162,9 @@ struct DaytimeLoadLine: View {
     }
 
     private var accessibilitySummary: String {
-        let scored = hours.compactMap { p in p.level.map { (p.hour, $0) } }
+        // nikhil/custom: the line can carry a point a minute; speak the first reading of each hour.
+        var seenHours = Set<Int>()
+        let scored = hours.compactMap { p in p.level.map { (p.hour, $0) } }.filter { seenHours.insert($0.0).inserted }
         guard !scored.isEmpty else { return String(localized: "No intraday stress data yet today.") }
         let parts = scored.map { "\($0.0):00 \(StressTrace.formatLevel($0.1))" }
         return String(localized: "Autonomic load today: \(parts.joined(separator: ", "))")

@@ -238,13 +238,17 @@ public enum DaytimeStress {
         /// `highStressMinutes`, `dayMean` and `peak` all stay on the non-overlapping `hours`, because
         /// overlapping windows would count the same minute more than once.
         public let timeline: [HourPoint]
+        /// nikhil/custom: minute-step, 10-minute-window display read (see DaytimeStress+Fine.swift).
+        /// Computed with `includeTimeline`; otherwise it falls back to `timeline`.
+        public let fineTimeline: [HourPoint]
 
         public init(hours: [HourPoint], sustainedHigh: Bool, sustainedRun: Int,
                     dayMean: Double?, peak: HourPoint?, activityMaskedHours: Int = 0,
                     highStressMinutes: Int = 0, hrOnlyFallback: Bool = false,
-                    timeline: [HourPoint]? = nil) {
+                    timeline: [HourPoint]? = nil, fineTimeline: [HourPoint]? = nil) {
             self.hours = hours
             self.timeline = timeline ?? hours
+            self.fineTimeline = fineTimeline ?? timeline ?? hours
             self.sustainedHigh = sustainedHigh
             self.sustainedRun = sustainedRun
             self.dayMean = dayMean
@@ -582,6 +586,14 @@ public enum DaytimeStress {
                 .sorted { $0.startTs < $1.startTs }
         }()
 
+        // nikhil/custom: the minute-by-minute display read, for every caller that draws a curve.
+        let fine: [HourPoint]? = {
+            guard includeTimeline else { return nil }
+            let reference: (hr: Double, sd: Double)?
+            if case .baselineRelative = mode, let refHR { reference = (refHR, sdHR) } else { reference = nil }
+            return fineTimeline(hr: hr, activity: activity, tzOffsetSeconds: tzOffsetSeconds, reference: reference)
+        }()
+
         let scored = points.compactMap { p -> (HourPoint, Double)? in p.level.map { (p, $0) } }
         guard !scored.isEmpty else {
             // No scorable waking hour — still return the (unscored) timeline so the UI can
@@ -591,7 +603,8 @@ public enum DaytimeStress {
             return points.isEmpty ? .empty
                 : Result(hours: points, sustainedHigh: false, sustainedRun: 0,
                          dayMean: nil, peak: nil, activityMaskedHours: activityMaskedHours,
-                         highStressMinutes: 0, hrOnlyFallback: hrOnlyFallback, timeline: timeline)
+                         highStressMinutes: 0, hrOnlyFallback: hrOnlyFallback, timeline: timeline,
+                         fineTimeline: fine)
         }
 
         // 5) Sustained-high flag: walk back from the latest SCORED hour while each is HIGH.
@@ -613,7 +626,7 @@ public enum DaytimeStress {
         return Result(hours: points, sustainedHigh: sustained, sustainedRun: run,
                       dayMean: dayMean, peak: peak, activityMaskedHours: activityMaskedHours,
                       highStressMinutes: highStressMinutes, hrOnlyFallback: hrOnlyFallback,
-                      timeline: timeline)
+                      timeline: timeline, fineTimeline: fine)
     }
 
     // MARK: - Helpers

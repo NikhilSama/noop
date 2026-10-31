@@ -1956,7 +1956,7 @@ struct LiquidTodayView: View {
                 repo: repo,
                 personalBaseline: PuffinExperiment.stressPersonalBaselineEnabled
             )?.result
-            hostedStressHours = result?.timeline ?? []
+            hostedStressHours = result?.fineTimeline ?? []   // nikhil/custom: minute-by-minute
             hostedStressActivityMaskedHours = result?.activityMaskedHours ?? 0
         } else {
             hostedStressHours = []

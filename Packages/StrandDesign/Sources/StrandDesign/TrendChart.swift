@@ -170,6 +170,10 @@ public struct TrendChart: View {
     /// Optional elapsed time window for a workout trace, with workout-relative tick labels.
     public var workoutTimeAxis: ClosedRange<Date>?
 
+    /// nikhil/custom: stepped weekly / monthly / quarterly averages over the series (see `PeriodAverages`),
+    /// computed once in `init`. Empty when disabled, for a workout trace, or when the span is under two weeks.
+    private let periodAverages: [PeriodAverages.Segment]
+
     /// Mean of all point values, computed once in `init` so the area fill's gradient
     /// stop doesn't run an O(n) reduce for every mark on every render.
     private let averageValue: Double
@@ -194,7 +198,8 @@ public struct TrendChart: View {
         workoutTimeAxis: ClosedRange<Date>? = nil,
         yAxisStep: Double? = nil,
         showsBarValues: Bool = false,
-        largeSelection: Bool = false
+        largeSelection: Bool = false,
+        showsPeriodAverages: Bool = true
     ) {
         let sorted = points.sorted { $0.date < $1.date }
         self.points = sorted
@@ -218,6 +223,8 @@ public struct TrendChart: View {
             ? valueRange.lowerBound
             : sorted.map(\.value).reduce(0, +) / Double(sorted.count)
         self.averageValue = avg
+        self.periodAverages = showsPeriodAverages && workoutTimeAxis == nil
+            ? PeriodAverages.segments(for: sorted) : []
 
         // The point set handed to the marks: full resolution up to the threshold, else min/max-bucketed
         // to ~the plot pixel width (pixel-identical line, far fewer GPU vertices). Computed once here.
@@ -391,6 +398,14 @@ public struct TrendChart: View {
                         .foregroundStyle(StrandPalette.sample(stops: stops, at: unit(p.value)))
                     }
                 }
+            }
+            // nikhil/custom: period averages, drawn over the series as flat steps.
+            ForEach(periodAverages) { seg in
+                RuleMark(xStart: .value("Period start", seg.start),
+                         xEnd: .value("Period end", seg.end),
+                         y: .value("Period average", seg.average))
+                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .foregroundStyle(StrandPalette.textPrimary.opacity(0.55))
             }
         }
         // Domain drives BOTH the axis extent and the plot clip. A caller that wants a top-of-range
