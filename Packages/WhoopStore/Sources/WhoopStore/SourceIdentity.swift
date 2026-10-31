@@ -31,12 +31,25 @@ public enum SourceIdentity {
         guard let address, !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
-        guard let row = rows.first(where: {
+        let matches = rows.filter {
             guard let pid = $0.peripheralId else { return false }
             return pid.caseInsensitiveCompare(address) == .orderedSame
-        }) else { return nil }
+        }
+        // One strap can sit under several rows: re-adding it through the wizard archives the old row and
+        // keeps its peripheralId. Prefer the active row, then a paired one, and only then an archived one;
+        // taking the first match filed every link under the archived row, where nothing reads it.
+        guard let row = matches.min(by: { statusRank($0) < statusRank($1) }) else { return nil }
         guard isWhoop(row), row.id != currentId else { return nil }
         return row.id
+    }
+
+    /// Lower wins when several rows carry the connected peripheral. Byte-identical to the Kotlin twin.
+    static func statusRank(_ device: PairedDevice) -> Int {
+        switch device.status {
+        case .active: return 0
+        case .paired: return 1
+        case .archived: return 2
+        }
     }
 
     /// A device is a WHOOP when it is the seeded legacy row or its brand says so. Kept here beside the

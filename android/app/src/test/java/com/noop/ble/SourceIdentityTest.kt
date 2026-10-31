@@ -90,4 +90,21 @@ class SourceIdentityTest {
         assertEquals(WhoopBleClient.DEFAULT_DEVICE_ID,
             SourceIdentity.resolve("AA:BB:CC:DD:EE:03", listOf(legacy), currentId = "oura-abc"))
     }
+
+    /**
+     * One strap registered twice: re-added through the wizard, which archived the first row but left its
+     * peripheralId. The link belongs to the ACTIVE row; the first match (the archived row, listed first)
+     * filed a whole night under an id nothing reads. Same inputs and answers as the Swift twin.
+     */
+    @Test
+    fun `a re-added strap is attributed to the active row not the archived one`() {
+        val address = "480287B9-5853-F0CD-99AC-0E04E8313F6E"
+        val archived = row(WhoopBleClient.DEFAULT_DEVICE_ID, "WHOOP", address).copy(status = "archived")
+        val active = row("whoop-5B00297496", "WHOOP", address).copy(status = "active")
+        assertEquals("whoop-5B00297496",
+            SourceIdentity.resolve(address, listOf(archived, active), currentId = WhoopBleClient.DEFAULT_DEVICE_ID))
+        assertNull(SourceIdentity.resolve(address, listOf(archived, active), currentId = "whoop-5B00297496"))
+        assertEquals(WhoopBleClient.DEFAULT_DEVICE_ID,
+            SourceIdentity.resolve(address, listOf(archived), currentId = "oura-abc"))
+    }
 }

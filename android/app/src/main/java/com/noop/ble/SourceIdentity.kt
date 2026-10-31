@@ -32,10 +32,21 @@ object SourceIdentity {
      */
     fun resolve(address: String?, rows: List<PairedDeviceRow>, currentId: String): String? {
         if (address.isNullOrBlank()) return null
-        val row = rows.firstOrNull { it.peripheralId?.equals(address, ignoreCase = true) == true }
+        // One strap can sit under several rows: re-adding it through the wizard archives the old row and
+        // keeps its peripheralId. Prefer the active row, then a paired one, and only then an archived one;
+        // taking the first match filed every link under the archived row, where nothing reads it.
+        val row = rows.filter { it.peripheralId?.equals(address, ignoreCase = true) == true }
+            .minByOrNull { statusRank(it) }
             ?: return null
         if (!isWhoop(row) || row.id == currentId) return null
         return row.id
+    }
+
+    /** Lower wins when several rows carry the connected peripheral. Byte-identical to the Swift twin. */
+    fun statusRank(device: PairedDeviceRow): Int = when (device.status) {
+        "active" -> 0
+        "paired" -> 1
+        else -> 2
     }
 
     /**

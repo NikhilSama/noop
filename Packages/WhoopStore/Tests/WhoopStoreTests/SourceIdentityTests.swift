@@ -75,4 +75,23 @@ final class SourceIdentityTests: XCTestCase {
         XCTAssertEqual(SourceIdentity.resolve(address: "AA:BB:CC:DD:EE:03",
                                               rows: [legacy], currentId: "oura-abc"), "my-whoop")
     }
+
+    /// One strap registered twice: re-added through the wizard, which archived the first row but left its
+    /// peripheralId. The link belongs to the ACTIVE row; the first match (the archived row, listed first)
+    /// filed a whole night under an id nothing reads, so no sleep was scored.
+    func testReAddedStrapIsAttributedToTheActiveRowNotTheArchivedOne() {
+        var archived = row("my-whoop", "WHOOP", "480287B9-5853-F0CD-99AC-0E04E8313F6E")
+        archived.status = .archived
+        var active = row("whoop-5B00297496", "WHOOP", "480287B9-5853-F0CD-99AC-0E04E8313F6E")
+        active.status = .active
+        XCTAssertEqual(SourceIdentity.resolve(address: "480287B9-5853-F0CD-99AC-0E04E8313F6E",
+                                              rows: [archived, active], currentId: "my-whoop"),
+                       "whoop-5B00297496")
+        // Already on the active row: no re-point.
+        XCTAssertNil(SourceIdentity.resolve(address: "480287B9-5853-F0CD-99AC-0E04E8313F6E",
+                                            rows: [archived, active], currentId: "whoop-5B00297496"))
+        // Only the archived row carries it: it still resolves, as before.
+        XCTAssertEqual(SourceIdentity.resolve(address: "480287B9-5853-F0CD-99AC-0E04E8313F6E",
+                                              rows: [archived], currentId: "oura-abc"), "my-whoop")
+    }
 }
