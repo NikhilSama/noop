@@ -2841,6 +2841,10 @@ private struct SleepTimeEditor: View {
                 }
             }
 
+            // nikhil/custom: pick bed / wake off the heart-rate trace (a falling HR marks sleep onset).
+            HRWindowPicker(start: $bed, end: $wake, tint: StrandPalette.restColor,
+                           startLabel: bedLabel, endLabel: wakeLabel)
+
             // Destructive delete for an existing night/nap (#68). Confirmation-gated so a tap can't clear
             // a night by accident; nil for the "Add a nap" sheet (nothing to delete). Sits below the
             // pickers, visually separated from the primary Save action.

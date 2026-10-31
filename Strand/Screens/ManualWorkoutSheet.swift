@@ -169,6 +169,8 @@ struct ManualWorkoutSheet: View {
                         .labelsHidden()
                         .accessibilityLabel("End date and time")
                 }
+                // nikhil/custom: pick the edges off the heart-rate trace.
+                HRWindowPicker(start: $start, end: $end, tint: StrandPalette.effortColor)
                 field(String(localized: "Duration")) {
                     HStack(spacing: 12) {
                         Stepper(value: durationBinding, in: 1...(24 * 60), step: 5) {
