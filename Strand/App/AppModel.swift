@@ -494,6 +494,8 @@ final class AppModel: ObservableObject {
             // BEFORE the Effort rescore + analyzeRecent loop so both operate on a cleaned DB. Persisted
             // flag → no-op on every subsequent launch; idempotent on a clean DB.
             await self.intelligence.runTimestampHealIfNeeded()
+            // nikhil/custom: fold a re-added strap's archived registry row into the active one.
+            await self.mergeDuplicateStrapIfNeeded()
             // One-shot on-upgrade Effort rescore (#313): recompute strain from source across the FULL
             // history and repair sleep rejected by unmatched WRIST_OFF in one pass. Both persisted flags
             // describe that shared pass; either pending flag triggers it.
