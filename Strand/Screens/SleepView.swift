@@ -113,6 +113,8 @@ struct SleepView: View {
     /// The stable detected key of the nap whose "why this is a nap" popover is open, or nil. Keyed by
     /// the nap's own `startTs` so one popover shows at a time even with several nap rows. (C1)
     @State private var napWhyStartTs: Int?
+    /// nikhil/custom: the nap whose stage sheet is open (tap a nap row).
+    @State private var napStages: NapStagesTarget?
 
     /// WHOOP-style stage highlight: tapping a stage row under the timeline lights that stage up on the
     /// chart and recedes the rest (tap again to clear). Display-only selection state. (ryanAtriumAi #988)
@@ -302,6 +304,18 @@ struct SleepView: View {
                     sectionOrderRaw: $sleepSectionOrderRaw,
                     hiddenSectionsRaw: $sleepHiddenSectionsRaw
                 )
+            }
+            .sheet(item: $napStages) { target in
+                let nap = target.nap
+                NapStagesSheet(nap: nap) {
+                    // After this sheet's dismissal settles, so the editor sheet can present.
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        wakeEdit = WakeEdit(detectedStartTs: nap.startTs, bedTs: nap.effectiveStartTs,
+                                        wakeTs: nap.endTs, stagesJSON: nap.stagesJSON, userEdited: true)
+                    }
+                }
+                .environmentObject(repo)
             }
             .sheet(item: $addNap) { seed in
                 SleepTimeEditor(bedTs: seed.bedTs, wakeTs: seed.wakeTs,
@@ -784,12 +798,23 @@ struct SleepView: View {
                 .font(StrandFont.headline)
                 .foregroundStyle(StrandPalette.restColor)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(napWindowText(nap)).font(StrandFont.body).foregroundStyle(StrandPalette.textPrimary)
-                Text(durationText(Double(nap.endTs - nap.effectiveStartTs) / 60.0))
-                    .strandOverline()
+            // nikhil/custom: tap the window to open the nap's stage breakdown (NapStagesSheet).
+            Button { napStages = NapStagesTarget(nap: nap) } label: {
+                HStack(spacing: 6) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(napWindowText(nap)).font(StrandFont.body).foregroundStyle(StrandPalette.textPrimary)
+                        Text(napDurationLine(nap)).strandOverline()
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(StrandFont.footnote)
+                        .foregroundStyle(StrandPalette.textTertiary)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: 8)
+            .buttonStyle(LiquidPressStyle())
+            .accessibilityLabel("\(napWindowText(nap)), \(napDurationLine(nap)). Show stages")
             // C1 — "why this is a nap" explainer: the nap-row nudge that everything other than the chosen
             // main block is logged as a nap, with the Edit next-step. Keyed by the nap's stable startTs so
             // one popover shows at a time across several nap rows. (spec 2026-06-20)
@@ -825,6 +850,13 @@ struct SleepView: View {
             .help("Edit nap times")
             .accessibilityLabel(isEdited ? "Edit nap times (edited)" : "Edit nap times")
         }
+    }
+
+    /// nikhil/custom: "30m · 22m asleep" once the nap is staged; the window length alone before that.
+    private func napDurationLine(_ nap: CachedSleepSession) -> String {
+        let window = durationText(Double(nap.endTs - nap.effectiveStartTs) / 60.0)
+        guard let asleep = NapStagesSheet.asleepMinutes(nap) else { return window }
+        return String(localized: "\(window) · \(durationText(asleep)) asleep")
     }
 
     /// "HH:mm–HH:mm" clock window for a nap row (device 12-/24-h setting via the shared Night formatter).
