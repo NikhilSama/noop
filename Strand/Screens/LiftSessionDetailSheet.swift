@@ -108,7 +108,12 @@ struct LiftSessionDetailSheet: View {
             Button("Delete", role: .destructive) { Task { await deleteSession() } }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("\(performed.count) recorded sets will be removed, and so will the workout this session created. This cannot be undone.")
+            // nikhil/custom: sets logged afterwards onto a recorded workout leave that workout in place.
+            if isAttached {
+                Text("\(performed.count) recorded sets will be removed. The recorded workout stays. This cannot be undone.")
+            } else {
+                Text("\(performed.count) recorded sets will be removed, and so will the workout this session created. This cannot be undone.")
+            }
         }
     }
 
@@ -118,10 +123,19 @@ struct LiftSessionDetailSheet: View {
         defer { deleting = false }
 
         _ = try? await store.deleteLiftSession(id: session.id)   // cascades to its sets
-        if let workout { await repo.deleteWorkout(workout) }
+        if isAttached {
+            LiftSessionAttachment.unmark(startTs: session.startTs, sport: session.sport)
+        } else if let workout {
+            await repo.deleteWorkout(workout)
+        }
 
         await onChanged()
         dismiss()
+    }
+
+    /// nikhil/custom: filed afterwards onto a workout recorded on its own ("Log what you did").
+    private var isAttached: Bool {
+        LiftSessionAttachment.isAttached(startTs: session.startTs, sport: session.sport)
     }
 
     private var subtitle: LocalizedStringKey {
@@ -445,6 +459,13 @@ struct LiftSessionDetailSheet: View {
                                               from: session.startTs - 1,
                                               to: session.startTs + 1, limit: 10)) ?? []
         workout = rows.first { $0.startTs == session.startTs && $0.sport == session.sport }
+        // nikhil/custom: a session logged onto a Watch workout is pinned to a row in the Apple Health
+        // namespace, which the strap-only read above does not see.
+        if workout == nil, isAttached {
+            let days = max(1, (Int(Date().timeIntervalSince1970) - session.startTs) / 86_400 + 2)
+            workout = await repo.workoutRows(days: days)
+                .first { $0.startTs == session.startTs && $0.sport == session.sport }
+        }
 
         // Previous volume per exercise, for the "vs last time" line.
         var previous: [String: Double] = [:]

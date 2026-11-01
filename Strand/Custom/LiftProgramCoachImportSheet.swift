@@ -28,12 +28,6 @@ struct LiftProgramCoachImportSheet: View {
     @State private var warnings: [String] = []
     @State private var saving = false
 
-    #if os(iOS)
-    @StateObject private var voice = CoachVoiceInput()
-    /// What was typed before the mic started, so dictation appends instead of replacing it.
-    @State private var voiceBase = ""
-    #endif
-
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -90,17 +84,8 @@ struct LiftProgramCoachImportSheet: View {
             }
 
             NoopCard {
-                VStack(alignment: .trailing, spacing: 8) {
-                    TextField("Exercises, sets, reps, weights, rest…", text: $description, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .font(StrandFont.body)
-                        .foregroundStyle(StrandPalette.textPrimary)
-                        .lineLimit(5...14)
-                        .disabled(working)
-                    #if os(iOS)
-                    micButton
-                    #endif
-                }
+                CoachDictationField(text: $description, placeholder: "Exercises, sets, reps, weights, rest…",
+                                    disabled: working)
             }
 
             if coach.isConfigured {
@@ -131,59 +116,27 @@ struct LiftProgramCoachImportSheet: View {
         }
     }
 
-    #if os(iOS)
-    private var micButton: some View {
-        Button {
-            toggleVoice()
-        } label: {
-            Label(voice.isRecording ? "Stop" : "Speak",
-                  systemImage: voice.isRecording ? "stop.circle.fill" : "mic.fill")
-                .font(StrandFont.subhead)
-                .foregroundStyle(voice.isRecording ? StrandPalette.statusCritical : StrandPalette.accent)
-        }
-        .buttonStyle(.plain)
-        .disabled(working || !(voice.canUseVoice || voice.authorization == .notDetermined))
-        .accessibilityLabel(voice.isRecording ? "Stop dictation" : "Dictate the workout")
-        .task {
-            if voice.authorization == .notDetermined { voice.requestAuthorization { _ in } }
-        }
-    }
-
-    private func toggleVoice() {
-        if voice.isRecording {
-            voice.stopTranscribing { final in
-                let spoken = final.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !spoken.isEmpty { description = voiceBase.isEmpty ? spoken : "\(voiceBase) \(spoken)" }
-            }
-            return
-        }
-        voiceBase = description.trimmingCharacters(in: .whitespacesAndNewlines)
-        let start = {
-            voice.startTranscribing { partial in
-                description = voiceBase.isEmpty ? partial : "\(voiceBase) \(partial)"
-            }
-        }
-        if voice.authorization == .notDetermined {
-            voice.requestAuthorization { state in if state == .authorized { start() } }
-        } else {
-            start()
-        }
-    }
-    #endif
-
     private func build() async {
         let text = description.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !working else { return }
-        #if os(iOS)
-        if voice.isRecording { voice.stopTranscribing { _ in } }
-        #endif
         working = true
         failure = nil
         defer { working = false }
         do {
             let reply = try await coach.oneShot(systemPrompt: CoachProgramParser.systemPrompt, text: text)
             let parsed = try CoachProgramParser.parse(reply)
-            draft = Draft(parsed.program, system: unitSystem)
+            var built = Draft(parsed.program, system: unitSystem)
+            // Exercises already in the log keep their spelling and the muscles the user gave them.
+            let known = (try? await repo.storeHandle()?.liftExercises(deviceId: repo.deviceId)) ?? []
+            for i in built.lines.indices {
+                guard let k = CoachVocabulary.lookup(built.lines[i].exercise, in: known) else { continue }
+                built.lines[i].exercise = k.name
+                if k.primaryMuscle != nil || !k.secondaryMuscles.isEmpty {
+                    built.lines[i].primary = k.primaryMuscle
+                    built.lines[i].secondary = k.secondaryMuscles
+                }
+            }
+            draft = built
             warnings = parsed.warnings
         } catch let error as CoachProgramParser.ParseError {
             failure = error == .empty
@@ -272,15 +225,7 @@ struct LiftProgramCoachImportSheet: View {
                     numberField(LocalizedStringKey(LiftFormat.weightUnit(unitSystem)), lineBinding(id, \.weight))
                     numberField("Rest s", lineBinding(id, \.rest))
                 }
-                Picker("Muscle", selection: lineBinding(id, \.primary)) {
-                    Text("Unclassified").tag(LiftMuscle?.none)
-                    ForEach(LiftMuscle.allCases, id: \.self) { m in
-                        Text(m.displayName).tag(LiftMuscle?.some(m))
-                    }
-                }
-                .pickerStyle(.menu)
-                .tint(StrandPalette.accent)
-                .font(StrandFont.footnote)
+                LiftMusclePickers(primary: lineBinding(id, \.primary), secondary: lineBinding(id, \.secondary))
             }
         }
     }

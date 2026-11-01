@@ -85,6 +85,10 @@ struct WorkoutDetailView: View {
                        topBackground: liquidScaffoldSky()) {
             headerCard
             statStrip
+            // nikhil/custom: the sets of a strength workout, or "Log what you did" when none are logged yet.
+            if row.sport == LiftingImporter.sport {
+                WorkoutLiftSetsCard(row: row)
+            }
             routeCard
             hrCurveCard
             zonesCard

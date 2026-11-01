@@ -125,8 +125,9 @@ enum CoachProgramParser {
         }
     }
 
-    /// A number the model may send as 3, 3.0 or "3". Anything else decodes as nil, not a failure.
-    private struct Flex: Decodable {
+    /// A number the model may send as 3, 3.0 or "3". Anything else decodes as nil, not a failure. Shared
+    /// with `CoachSessionParser`.
+    struct Flex: Decodable {
         let value: Double?
         var int: Int? { value.map { Int($0.rounded()) } }
 
