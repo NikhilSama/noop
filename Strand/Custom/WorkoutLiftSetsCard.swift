@@ -45,6 +45,15 @@ enum LiftSessionAttachment {
 struct WorkoutLiftSetsCard: View {
     let row: WorkoutRow
 
+    /// Sports whose workouts can carry sets: the strength names NOOP, Apple Health and WHOOP imports use,
+    /// plus the generic "Workout" / "Activity" a Watch session can arrive as.
+    static let sports: Set<String> = [
+        "Strength Training", "Functional Fitness", "Weightlifting", "Strength Trainer", "Powerlifting",
+        "Functional Strength Training", "Traditional Strength Training", "CrossFit", "Workout", "Activity",
+    ]
+
+    static func applies(to sport: String) -> Bool { sports.contains(sport) }
+
     @EnvironmentObject private var repo: Repository
     @AppStorage(UnitPrefs.systemKey) private var unitSystemRaw = UnitSystem.metric.rawValue
     private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
@@ -68,6 +77,10 @@ struct WorkoutLiftSetsCard: View {
                 NoopCard {
                     if let session { attached(session) } else { empty }
                 }
+            } else {
+                // A real (zero-height) view while loading: modifiers on a Group with no content are
+                // dropped, so an empty branch here would never run the `.task` that loads the card.
+                Color.clear.frame(height: 0)
             }
         }
         .task { await load() }

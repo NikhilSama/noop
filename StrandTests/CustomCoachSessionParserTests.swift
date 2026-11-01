@@ -104,4 +104,13 @@ final class CustomCoachSessionParserTests: XCTestCase {
         LiftSessionAttachment.unmark(startTs: 5, sport: "Strength Training", defaults: defaults)
         XCTAssertFalse(LiftSessionAttachment.isAttached(startTs: 5, sport: "Strength Training", defaults: defaults))
     }
+
+    func testSetsCardShowsForStrengthAndGenericWorkoutsOnly() {
+        for sport in ["Strength Training", "Functional Fitness", "Weightlifting", "Workout", "Activity"] {
+            XCTAssertTrue(WorkoutLiftSetsCard.applies(to: sport), sport)
+        }
+        for sport in ["Walking", "Running", "Elliptical", "Yoga"] {
+            XCTAssertFalse(WorkoutLiftSetsCard.applies(to: sport), sport)
+        }
+    }
 }

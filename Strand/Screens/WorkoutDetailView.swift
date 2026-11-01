@@ -86,7 +86,7 @@ struct WorkoutDetailView: View {
             headerCard
             statStrip
             // nikhil/custom: the sets of a strength workout, or "Log what you did" when none are logged yet.
-            if row.sport == LiftingImporter.sport {
+            if WorkoutLiftSetsCard.applies(to: row.sport) {
                 WorkoutLiftSetsCard(row: row)
             }
             routeCard
