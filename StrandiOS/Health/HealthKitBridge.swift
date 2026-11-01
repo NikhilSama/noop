@@ -168,6 +168,17 @@ final class HealthKitBridge: ObservableObject {
     /// `sync()` only walks the same window the daily collectors already use.
     private static let hourlyStepsBackfilledKey = "applehealth.hourlySteps.backfilled"
 
+    /// nikhil/custom: UserDefaults key gating the one-time FULL-history pass of the daily collectors
+    /// (steps, weight, HR, sleep, …). Until it is set, `sync()` reads from as far back as HealthKit permits
+    /// instead of the normal window, so trend charts aren't cut off at the install date. Set on the first
+    /// successful pass that found step counts; every later sync reads only the normal recent window.
+    /// Gated on steps (not just any data) because HealthKit answers a denied read type with an EMPTY
+    /// result, not an error: a pass run while Steps access is off would otherwise burn the one-time widen.
+    /// v2: the v1 flag was set on a pass where Steps access was off.
+    private static let fullHistoryBackfilledKey = "custom.applehealth.fullHistory.backfilled.v2"
+    /// Floor on the full-history read, in case HealthKit reports no permitted-sample bound.
+    private static let fullHistoryMaxYears = 20
+
     /// Fingerprint the actual read and share sets, including categories and series (#2644).
     /// Keep the roles distinct: adding share access for an already-readable type must change it.
     /// `writeTypes` applies `writeDenied`, so forbidden share types never expand the request.
@@ -512,6 +523,14 @@ final class HealthKitBridge: ObservableObject {
         let cal = Calendar.current
         let end = Date()
         guard let start = cal.date(byAdding: .day, value: -days, to: cal.startOfDay(for: end)) else { return false }
+        // nikhil/custom: the daily aggregates read from `readStart`: all of Health's history on the one-time
+        // full pass, else the normal window. Hydration's zero-fill, hourly steps and workouts stay on `start`.
+        let fullHistoryPass = !UserDefaults.standard.bool(forKey: Self.fullHistoryBackfilledKey)
+        let readStart: Date = {
+            guard fullHistoryPass else { return start }
+            let floor = cal.date(byAdding: .year, value: -Self.fullHistoryMaxYears, to: start) ?? start
+            return min(start, max(self.store.earliestPermittedSampleDate(), floor))   // the HKHealthStore, not the local WhoopStore
+        }()
 
         var byDay: [String: DayAgg] = [:]
         func agg(_ day: String) -> DayAgg { byDay[day] ?? DayAgg() }
@@ -525,31 +544,31 @@ final class HealthKitBridge: ObservableObject {
         }
 
         // Quantity aggregates per day.
-        let restingHeartRateRead = await collect(.restingHeartRate, unit: HKUnit.count().unitDivided(by: .minute()), start: start, end: end, op: .discreteAverage) { day, v in
+        let restingHeartRateRead = await collect(.restingHeartRate, unit: HKUnit.count().unitDivided(by: .minute()), start: readStart, end: end, op: .discreteAverage) { day, v in
             var a = agg(day); a.restingHr = v; byDay[day] = a
         }
         note(restingHeartRateRead, "restingHeartRate")
-        let heartRateAvgRead = await collect(.heartRate, unit: HKUnit.count().unitDivided(by: .minute()), start: start, end: end, op: .discreteAverage) { day, v in
+        let heartRateAvgRead = await collect(.heartRate, unit: HKUnit.count().unitDivided(by: .minute()), start: readStart, end: end, op: .discreteAverage) { day, v in
             var a = agg(day); a.avgHr = v; byDay[day] = a
         }
         note(heartRateAvgRead, "heartRateAvg")
-        let heartRateMaxRead = await collect(.heartRate, unit: HKUnit.count().unitDivided(by: .minute()), start: start, end: end, op: .discreteMax) { day, v in
+        let heartRateMaxRead = await collect(.heartRate, unit: HKUnit.count().unitDivided(by: .minute()), start: readStart, end: end, op: .discreteMax) { day, v in
             var a = agg(day); a.maxHr = v; byDay[day] = a
         }
         note(heartRateMaxRead, "heartRateMax")
-        let heartRateVariabilitySDNNRead = await collect(.heartRateVariabilitySDNN, unit: .secondUnit(with: .milli), start: start, end: end, op: .discreteAverage) { day, v in
+        let heartRateVariabilitySDNNRead = await collect(.heartRateVariabilitySDNN, unit: .secondUnit(with: .milli), start: readStart, end: end, op: .discreteAverage) { day, v in
             var a = agg(day); a.hrv = v; byDay[day] = a
         }
         note(heartRateVariabilitySDNNRead, "heartRateVariabilitySDNN")
-        let oxygenSaturationRead = await collect(.oxygenSaturation, unit: .percent(), start: start, end: end, op: .discreteAverage) { day, v in
+        let oxygenSaturationRead = await collect(.oxygenSaturation, unit: .percent(), start: readStart, end: end, op: .discreteAverage) { day, v in
             var a = agg(day); a.spo2 = v * 100; byDay[day] = a   // 0…1 → percent
         }
         note(oxygenSaturationRead, "oxygenSaturation")
-        let respiratoryRateRead = await collect(.respiratoryRate, unit: HKUnit.count().unitDivided(by: .minute()), start: start, end: end, op: .discreteAverage) { day, v in
+        let respiratoryRateRead = await collect(.respiratoryRate, unit: HKUnit.count().unitDivided(by: .minute()), start: readStart, end: end, op: .discreteAverage) { day, v in
             var a = agg(day); a.respRate = v; byDay[day] = a
         }
         note(respiratoryRateRead, "respiratoryRate")
-        let stepsReadOk = await collect(.stepCount, unit: .count(), start: start, end: end, op: .cumulativeSum) { day, v in
+        let stepsReadOk = await collect(.stepCount, unit: .count(), start: readStart, end: end, op: .cumulativeSum) { day, v in
             var a = agg(day); a.steps = v; byDay[day] = a
         }
         // Steps is in the ledger as well as behind its own guard below. The guard returns first and so
@@ -564,15 +583,15 @@ final class HealthKitBridge: ObservableObject {
             lastError = String(localized: "Apple Health sync failed: \(String(localized: "Steps"))")
             return false
         }
-        let activeEnergyBurnedRead = await collect(.activeEnergyBurned, unit: .kilocalorie(), start: start, end: end, op: .cumulativeSum) { day, v in
+        let activeEnergyBurnedRead = await collect(.activeEnergyBurned, unit: .kilocalorie(), start: readStart, end: end, op: .cumulativeSum) { day, v in
             var a = agg(day); a.activeKcal = v; byDay[day] = a
         }
         note(activeEnergyBurnedRead, "activeEnergyBurned")
-        let basalEnergyBurnedRead = await collect(.basalEnergyBurned, unit: .kilocalorie(), start: start, end: end, op: .cumulativeSum) { day, v in
+        let basalEnergyBurnedRead = await collect(.basalEnergyBurned, unit: .kilocalorie(), start: readStart, end: end, op: .cumulativeSum) { day, v in
             var a = agg(day); a.basalKcal = v; byDay[day] = a
         }
         note(basalEnergyBurnedRead, "basalEnergyBurned")
-        let vo2MaxRead = await collect(.vo2Max, unit: HKUnit(from: "ml/kg*min"), start: start, end: end, op: .discreteAverage) { day, v in
+        let vo2MaxRead = await collect(.vo2Max, unit: HKUnit(from: "ml/kg*min"), start: readStart, end: end, op: .discreteAverage) { day, v in
             var a = agg(day); a.vo2max = v; byDay[day] = a
         }
         note(vo2MaxRead, "vo2Max")
@@ -580,19 +599,19 @@ final class HealthKitBridge: ObservableObject {
         // Body composition — READ-ONLY import under the apple-health source (#20). Weight, lean mass
         // and BMI are point-in-time readings, so take the latest-of-day; body-fat reads fine as a
         // daily average. Body-fat HealthKit gives a 0…1 fraction, scaled to percent like spo2 above.
-        let bodyMassRead = await collect(.bodyMass, unit: .gramUnit(with: .kilo), start: start, end: end, op: .discreteMostRecent) { day, v in
+        let bodyMassRead = await collect(.bodyMass, unit: .gramUnit(with: .kilo), start: readStart, end: end, op: .discreteMostRecent) { day, v in
             var a = agg(day); a.weightKg = v; byDay[day] = a
         }
         note(bodyMassRead, "bodyMass")
-        let bodyFatPercentageRead = await collect(.bodyFatPercentage, unit: .percent(), start: start, end: end, op: .discreteAverage) { day, v in
+        let bodyFatPercentageRead = await collect(.bodyFatPercentage, unit: .percent(), start: readStart, end: end, op: .discreteAverage) { day, v in
             var a = agg(day); a.bodyFatPct = v * 100; byDay[day] = a   // 0…1 → percent
         }
         note(bodyFatPercentageRead, "bodyFatPercentage")
-        let leanBodyMassRead = await collect(.leanBodyMass, unit: .gramUnit(with: .kilo), start: start, end: end, op: .discreteMostRecent) { day, v in
+        let leanBodyMassRead = await collect(.leanBodyMass, unit: .gramUnit(with: .kilo), start: readStart, end: end, op: .discreteMostRecent) { day, v in
             var a = agg(day); a.leanMassKg = v; byDay[day] = a
         }
         note(leanBodyMassRead, "leanBodyMass")
-        let bodyMassIndexRead = await collect(.bodyMassIndex, unit: .count(), start: start, end: end, op: .discreteMostRecent) { day, v in
+        let bodyMassIndexRead = await collect(.bodyMassIndex, unit: .count(), start: readStart, end: end, op: .discreteMostRecent) { day, v in
             var a = agg(day); a.bmi = v; byDay[day] = a
         }
         note(bodyMassIndexRead, "bodyMassIndex")
@@ -605,12 +624,12 @@ final class HealthKitBridge: ObservableObject {
         // The result is KEPT here, unlike every aggregate above: the write below replaces the stored
         // figure, so a failed query must not be mistaken for an authoritative zero and wipe the window.
         let waterReadOk = await collect(.dietaryWater, unit: .literUnit(with: .milli),
-                                        start: start, end: end, op: .cumulativeSum) { day, v in
+                                        start: readStart, end: end, op: .cumulativeSum) { day, v in
             var a = agg(day); a.waterMl = v; byDay[day] = a
         }
 
         // Sleep minutes per day (asleep stages summed; attributed to wake day).
-        await collectSleep(start: start, end: end) { day, asleepMin, deepMin, remMin, coreMin in
+        await collectSleep(start: readStart, end: end) { day, asleepMin, deepMin, remMin, coreMin in
             var a = agg(day)
             a.asleepMin = asleepMin; a.deepMin = deepMin; a.remMin = remMin; a.coreMin = coreMin
             byDay[day] = a
@@ -759,6 +778,9 @@ final class HealthKitBridge: ObservableObject {
             // Record the window alongside the time: an observer wake may only stand down for a sync that
             // actually covered ITS days (see `observerCoalesceWindow`). Set on the success path only.
             lastSyncDays = days
+            if fullHistoryPass, byDay.values.contains(where: { $0.steps != nil }) {
+                UserDefaults.standard.set(true, forKey: Self.fullHistoryBackfilledKey)
+            }
             lastError = nil
             return true
         } catch {
