@@ -128,7 +128,9 @@ struct RootTabView: View {
         TabView(selection: nativeTabSelection) {
             tab(todayTabRoot, "Today", "square.grid.2x2", path: $tabPaths[0], scrollSignal: scrollTop[0]).tag(0)
             tab(TrendsView(), "Trends", "chart.line.uptrend.xyaxis", path: $tabPaths[1], scrollSignal: scrollTop[1]).tag(1)
-            tab(SleepView(), "Sleep", "bed.double", path: $tabPaths[2], scrollSignal: scrollTop[2]).tag(2)
+            // nikhil/custom: Workouts holds the third slot; Sleep (also reached from Today's Rest ring) moved
+            // into More.
+            tab(WorkoutsView(), "Workouts", "figure.run", path: $tabPaths[2], scrollSignal: scrollTop[2]).tag(2)
             // K3: Coach promoted to a top-level tab (was behind the More list). The sparkles icon
             // matches the More-tab row and the macOS sidebar entry.
             // Conditional on the master switch. The tags stay LITERAL rather than being renumbered when
@@ -474,7 +476,7 @@ struct RootTabView: View {
                 }
                 moreSection("Body") {
                     MoreRow("Live", "waveform.path.ecg", .live)
-                    MoreRow("Workouts", "figure.run", .workouts)
+                    MoreRow("Sleep", "bed.double", .sleep)
                     MoreRow("Lift Log", "dumbbell.fill", .liftLog)
                     MoreRow("Health", "heart.text.square.fill", .health)
                     MoreRow("Lab Book", "books.vertical.fill", .labBook)
@@ -599,7 +601,7 @@ struct RootTabView: View {
 /// registration in `moreTab`.
 private enum MoreDestination: Hashable {
     case insightsHub, intelligence, coach, insights, explore, compare
-    case live, workouts, liftLog, health, labBook, stress, breathe, intervals, rhythm
+    case live, workouts, sleep, liftLog, health, labBook, stress, breathe, intervals, rhythm
     case fusedRecord, appleHealth, miBand, dataSources, backupSync, shortcutsExport, noopLimitations
     case alarms, automations, testCentre, siriShortcuts, powerSaving, settings
 
@@ -613,6 +615,7 @@ private enum MoreDestination: Hashable {
         case .compare:         CompareView()
         case .live:            LiveView()
         case .workouts:        WorkoutsView()
+        case .sleep:           SleepView()
         case .liftLog:         LiftLogView()
         case .health:          HealthView()
         case .labBook:         LabBookView()

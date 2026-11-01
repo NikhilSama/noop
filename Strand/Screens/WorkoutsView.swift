@@ -211,6 +211,9 @@ struct WorkoutsView: View {
                 scopeBar
                 rangeBar(rows: windowRows, effectiveRange: resolved)
                 if let postLogNote { postLogBanner(postLogNote) }
+                // nikhil/custom: the session log first, as the thing people open this screen for; the
+                // summaries and charts follow it.
+                sessionsSection(rows: windowRows)
                 effortHero(rows: windowRows, effectiveRange: resolved, groups: groups)
                 summarySection(rows: windowRows, effectiveRange: resolved, groups: groups)
                 heatmapSection()
@@ -219,7 +222,6 @@ struct WorkoutsView: View {
                     zonesSection(z, totalSessions: windowRows.count)
                 }
                 recoveryTrendSection
-                sessionsSection(rows: windowRows)
             }
         }
         .task(id: repo.refreshSeq) {
