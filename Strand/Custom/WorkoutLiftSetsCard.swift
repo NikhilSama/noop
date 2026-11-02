@@ -45,10 +45,10 @@ enum LiftSessionAttachment {
 struct WorkoutLiftSetsCard: View {
     let row: WorkoutRow
 
-    /// Sports whose workouts can carry sets: the strength names NOOP, Apple Health and WHOOP imports use,
-    /// plus the generic "Workout" / "Activity" a Watch session can arrive as.
+    /// Sports whose workouts can carry sets: the strength names NOOP's own workout picker (WorkoutCatalog),
+    /// Apple Health and WHOOP imports use, plus the generic "Workout" / "Activity" a Watch session can arrive as.
     static let sports: Set<String> = [
-        "Strength Training", "Functional Fitness", "Weightlifting", "Strength Trainer", "Powerlifting",
+        "Strength", "Bodybuilding", "Strength Training", "Functional Fitness", "Weightlifting", "Strength Trainer", "Powerlifting",
         "Functional Strength Training", "Traditional Strength Training", "CrossFit", "Workout", "Activity",
     ]
 

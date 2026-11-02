@@ -106,7 +106,7 @@ final class CustomCoachSessionParserTests: XCTestCase {
     }
 
     func testSetsCardShowsForStrengthAndGenericWorkoutsOnly() {
-        for sport in ["Strength Training", "Functional Fitness", "Weightlifting", "Workout", "Activity"] {
+        for sport in ["Strength", "Bodybuilding", "Strength Training", "Functional Fitness", "Weightlifting", "Workout", "Activity"] {
             XCTAssertTrue(WorkoutLiftSetsCard.applies(to: sport), sport)
         }
         for sport in ["Walking", "Running", "Elliptical", "Yoga"] {
