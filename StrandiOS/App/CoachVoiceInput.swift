@@ -30,8 +30,7 @@ final class CoachVoiceInput: ObservableObject {
     static var isSupported: Bool {
         #if canImport(UIKit)
         return SFSpeechRecognizer.authorizationStatus() != .restricted
-            && SFSpeechRecognizer.self != nil
-            && SFSpeechRecognizer(locale: Locale.current) != nil
+            && localeHasRecognizer
         #else
         return false
         #endif
@@ -64,14 +63,25 @@ final class CoachVoiceInput: ObservableObject {
 
     /// On-device support for the current locale. If `false`, voice is disabled rather than
     /// falling back to server recognition (which would be raw-audio egress).
-    private static var localeSupportsOnDevice: Bool {
+    /// Read once: `canUseVoice` is evaluated on every render of a view holding a mic button, and building an
+    /// SFSpeechRecognizer each time is a round trip to the speech service on the main thread.
+    private static let localeSupportsOnDevice: Bool = {
         #if canImport(UIKit)
         guard let recognizer = SFSpeechRecognizer(locale: Locale.current) else { return false }
         return recognizer.supportsOnDeviceRecognition
         #else
         return false
         #endif
-    }
+    }()
+
+    /// Whether the current locale has a recognizer at all, read once for the same reason.
+    private static let localeHasRecognizer: Bool = {
+        #if canImport(UIKit)
+        return SFSpeechRecognizer(locale: Locale.current) != nil
+        #else
+        return false
+        #endif
+    }()
 
     /// True when voice can be used right now: supported, authorized, and locale supports on-device.
     var canUseVoice: Bool {

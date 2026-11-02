@@ -31,8 +31,12 @@ struct LiftSessionCoachLogSheet: View {
     @State private var saving = false
 
     /// The description is kept per workout until the session is saved, so closing the sheet (or the sheet
-    /// being rebuilt behind the keyboard) never loses what was typed or dictated.
+    /// being rebuilt behind the keyboard) never loses what was typed or dictated. It is held in memory while
+    /// the sheet is up and written to UserDefaults only when the sheet goes away: a write per keystroke or
+    /// per dictated word posts UserDefaults.didChangeNotification to every observer in the app, and on a
+    /// phone that froze the sheet.
     private var draftKey: String { "custom.liftLog.coachDraft.\(workout.startTs).\(workout.sport)" }
+    @MainActor private static var drafts: [String: String] = [:]
 
     var body: some View {
         NavigationStack {
@@ -75,12 +79,16 @@ struct LiftSessionCoachLogSheet: View {
         .frame(width: 560, height: 720)
         #endif
         .onAppear {
-            if description.isEmpty, let saved = UserDefaults.standard.string(forKey: draftKey) {
+            if description.isEmpty,
+               let saved = Self.drafts[draftKey] ?? UserDefaults.standard.string(forKey: draftKey) {
                 description = saved
             }
         }
         .onChangeCompat(of: description) { now in
-            UserDefaults.standard.set(now.isEmpty ? nil : now, forKey: draftKey)
+            Self.drafts[draftKey] = now.isEmpty ? nil : now
+        }
+        .onDisappear {
+            UserDefaults.standard.set(Self.drafts[draftKey], forKey: draftKey)
         }
     }
 
@@ -366,6 +374,7 @@ struct LiftSessionCoachLogSheet: View {
             return
         }
         LiftSessionAttachment.mark(startTs: workout.startTs, sport: workout.sport)
+        Self.drafts[draftKey] = nil
         UserDefaults.standard.removeObject(forKey: draftKey)
 
         // Best-effort, as in the program import: a full vocabulary must not fail the session itself. The
