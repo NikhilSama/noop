@@ -30,6 +30,10 @@ struct LiftSessionCoachLogSheet: View {
     @State private var warnings: [String] = []
     @State private var saving = false
 
+    /// The description is kept per workout until the session is saved, so closing the sheet (or the sheet
+    /// being rebuilt behind the keyboard) never loses what was typed or dictated.
+    private var draftKey: String { "custom.liftLog.coachDraft.\(workout.startTs).\(workout.sport)" }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -70,6 +74,14 @@ struct LiftSessionCoachLogSheet: View {
         #if os(macOS)
         .frame(width: 560, height: 720)
         #endif
+        .onAppear {
+            if description.isEmpty, let saved = UserDefaults.standard.string(forKey: draftKey) {
+                description = saved
+            }
+        }
+        .onChangeCompat(of: description) { now in
+            UserDefaults.standard.set(now.isEmpty ? nil : now, forKey: draftKey)
+        }
     }
 
     // MARK: - Step 1: describe
@@ -354,6 +366,7 @@ struct LiftSessionCoachLogSheet: View {
             return
         }
         LiftSessionAttachment.mark(startTs: workout.startTs, sport: workout.sport)
+        UserDefaults.standard.removeObject(forKey: draftKey)
 
         // Best-effort, as in the program import: a full vocabulary must not fail the session itself. The
         // review step already started each known exercise from the user's own muscles.

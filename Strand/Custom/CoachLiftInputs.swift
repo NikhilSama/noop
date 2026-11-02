@@ -17,6 +17,9 @@ struct CoachDictationField: View {
     @StateObject private var voice = CoachVoiceInput()
     /// What was typed before the mic started, so dictation appends instead of replacing it.
     @State private var voiceBase = ""
+    /// The text as dictation last wrote it. Anything else in the box means the user typed during dictation:
+    /// dictation then stops and their edit stands, instead of the next transcript overwriting it.
+    @State private var voiceWritten = ""
     #endif
 
     var body: some View {
@@ -63,14 +66,21 @@ struct CoachDictationField: View {
         if voice.isRecording {
             voice.stopTranscribing { final in
                 let spoken = final.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !spoken.isEmpty { text = voiceBase.isEmpty ? spoken : "\(voiceBase) \(spoken)" }
+                guard text == voiceWritten, !spoken.isEmpty else { return }
+                text = voiceBase.isEmpty ? spoken : "\(voiceBase) \(spoken)"
             }
             return
         }
         voiceBase = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        voiceWritten = text
         let start = {
             voice.startTranscribing { partial in
+                guard text == voiceWritten else {
+                    voice.stopTranscribing { _ in }
+                    return
+                }
                 text = voiceBase.isEmpty ? partial : "\(voiceBase) \(partial)"
+                voiceWritten = text
             }
         }
         if voice.authorization == .notDetermined {

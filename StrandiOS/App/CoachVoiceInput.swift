@@ -143,6 +143,16 @@ final class CoachVoiceInput: ObservableObject {
     private var audioEngine: AVAudioEngine?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
+    /// Bumped by every begin and finish, so a result queued by a session that has since ended (or been
+    /// replaced) is dropped instead of overwriting the text the user has moved on to.
+    private var generation = 0
+    /// Utterances already heard this session. After a pause the on-device recognizer can start a fresh
+    /// transcription that holds only the new words; those earlier words are kept here and joined in front.
+    private var committed = ""
+    /// The current utterance's transcript as last reported.
+    private var utterance = ""
+    /// The recognizer marked the current utterance finished (it attaches metadata at a pause).
+    private var utteranceEnded = false
 
     private func mapSpeech(_ status: SFSpeechRecognizerAuthorizationStatus) -> AuthorizationState {
         switch status {
@@ -177,13 +187,20 @@ final class CoachVoiceInput: ObservableObject {
             return
         }
 
+        generation += 1
+        let session = generation
+        committed = ""
+        utterance = ""
+        utteranceEnded = false
         let task = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            let text = result?.bestTranscription.formattedString
+            let ended = result?.speechRecognitionMetadata != nil
             Task { @MainActor in
-                guard let self else { return }
-                if let result {
-                    let text = result.bestTranscription.formattedString
-                    self.partialTranscript = text
-                    partial(text)
+                guard let self, self.generation == session else { return }
+                if let text {
+                    let full = self.accumulate(text, ended: ended)
+                    self.partialTranscript = full
+                    partial(full)
                 }
                 if error != nil || (result?.isFinal ?? false) {
                     self.finishSession(completion: { _ in })
@@ -212,7 +229,28 @@ final class CoachVoiceInput: ObservableObject {
         }
     }
 
+    /// The whole session's transcript given the recognizer's latest result. A result that doesn't carry on
+    /// from the last one, after a pause (or a sudden drop to a much shorter text), is a fresh utterance: the
+    /// previous one is committed rather than replaced.
+    private func accumulate(_ text: String, ended: Bool) -> String {
+        let prev = utterance.lowercased(), new = text.lowercased()
+        let restarted = !prev.isEmpty && !new.hasPrefix(prev)
+            && (utteranceEnded || (new.count < prev.count / 2 && !prev.hasPrefix(new)))
+        if restarted {
+            committed = Self.join(committed, utterance)
+        }
+        utterance = text
+        utteranceEnded = ended
+        return Self.join(committed, utterance)
+    }
+
+    private static func join(_ a: String, _ b: String) -> String {
+        let a = a.trimmingCharacters(in: .whitespaces), b = b.trimmingCharacters(in: .whitespaces)
+        return a.isEmpty ? b : b.isEmpty ? a : "\(a) \(b)"
+    }
+
     private func finishSession(completion: @escaping (String) -> Void) {
+        generation += 1
         if let audioEngine {
             audioEngine.stop()
             audioEngine.inputNode.removeTap(onBus: 0)
