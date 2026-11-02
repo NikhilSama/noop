@@ -1390,7 +1390,7 @@ private struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .frame(maxWidth: .infinity)
-            .foregroundStyle(Color.white)
+            .foregroundStyle(StrandPalette.onAccent)
             .padding(.vertical, 14)
             .padding(.horizontal, 20)
             .background(

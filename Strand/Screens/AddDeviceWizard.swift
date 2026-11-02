@@ -461,6 +461,7 @@ struct AddDeviceWizard: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(StrandPalette.accent)
+                .foregroundStyle(StrandPalette.onAccent)
                 .accessibilityLabel("Scan for \(typeTitle(type))")
             }
         }
@@ -619,6 +620,7 @@ struct AddDeviceWizard: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(StrandPalette.accent)
+        .foregroundStyle(StrandPalette.onAccent)
         .disabled(!ouraConsented)
         .accessibilityHint("Continue to get your ring ready")
 
@@ -700,6 +702,7 @@ struct AddDeviceWizard: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(StrandPalette.accent)
+        .foregroundStyle(StrandPalette.onAccent)
         .accessibilityLabel("Scan for your Oura ring")
     }
 
@@ -758,6 +761,7 @@ struct AddDeviceWizard: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(StrandPalette.accent)
+        .foregroundStyle(StrandPalette.onAccent)
         .disabled(ouraKeyBytes == nil)
         .accessibilityLabel("Scan for your Oura ring")
 
@@ -857,6 +861,7 @@ struct AddDeviceWizard: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(StrandPalette.accent)
+                .foregroundStyle(StrandPalette.onAccent)
                 .accessibilityLabel("Connect to this ring")
                 Text("Both XYLO and the Oura app can use a ring you own by key, but only one can hold the Bluetooth link at a time.")
                     .font(StrandFont.footnote)
@@ -931,6 +936,7 @@ struct AddDeviceWizard: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(StrandPalette.accent)
+                .foregroundStyle(StrandPalette.onAccent)
                 .accessibilityLabel("Try again")
 
                 Button {
@@ -1140,6 +1146,7 @@ struct AddDeviceWizard: View {
             Button("Add") { askMakeActive = true }
                 .buttonStyle(.borderedProminent)
                 .tint(StrandPalette.accent)
+                .foregroundStyle(StrandPalette.onAccent)
                 .frame(maxWidth: .infinity)
                 .disabled(nameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .padding(.top, 4)
@@ -1628,6 +1635,7 @@ private struct OuraPickList: View {
                     Button("Use file import") { onUseImport() }
                         .buttonStyle(.borderedProminent)
                         .tint(StrandPalette.accent)
+                        .foregroundStyle(StrandPalette.onAccent)
                         .accessibilityLabel("Use file import for Oura")
                 }
                 .padding(16)

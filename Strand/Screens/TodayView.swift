@@ -1362,7 +1362,7 @@ struct TodayView: View {
                 Button { router.requestQuickActions() } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(StrandPalette.goldDeepText)
+                        .foregroundStyle(StrandPalette.onAccent)
                         .frame(width: 36, height: 36)
                         .background(Circle().fill(StrandPalette.accent))
                         .contentShape(Circle())

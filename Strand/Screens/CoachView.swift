@@ -712,14 +712,14 @@ struct CoachView: View {
             } label: {
                 Group {
                     if coach.sending {
-                        ProgressView().controlSize(.small).tint(StrandPalette.goldDeepText)
+                        ProgressView().controlSize(.small).tint(StrandPalette.onAccent)
                     } else {
                         Image(systemName: "arrow.up")
                             .font(.system(size: 15, weight: .semibold))
                     }
                 }
                 .frame(width: 44, height: 38)
-                .foregroundStyle(StrandPalette.goldDeepText)
+                .foregroundStyle(StrandPalette.onAccent)
                 .background(StrandPalette.accent,
                             in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }

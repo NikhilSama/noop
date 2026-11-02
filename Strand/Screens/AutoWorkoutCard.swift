@@ -77,6 +77,7 @@ struct AutoWorkoutCard: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(StrandPalette.accent)
+                    .foregroundStyle(StrandPalette.onAccent)
                     .disabled(saving)
 
                     Button("Not a workout") { dismiss(w) }

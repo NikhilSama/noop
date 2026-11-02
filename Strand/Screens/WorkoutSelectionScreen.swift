@@ -282,7 +282,7 @@ struct WorkoutSelectionCard: View {
 
                 Image(systemName: "play.fill")
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(StrandPalette.goldDeepText)
+                    .foregroundStyle(StrandPalette.onAccent)
                     .frame(width: 52, height: 52)
                     .background(Circle().fill(StrandPalette.accent))
                     .accessibilityHidden(true)

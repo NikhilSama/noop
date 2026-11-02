@@ -96,6 +96,7 @@ struct WatchWorkoutView: View {
                     .frame(maxWidth: .infinity)
             }
             .tint(StrandPalette.effortColor)
+            .foregroundStyle(StrandPalette.inkOnBright)
             .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -238,6 +239,7 @@ struct WatchWorkoutView: View {
                 }
                 .accessibilityLabel("Resume")
                 .tint(StrandPalette.effortColor)
+                .foregroundStyle(StrandPalette.inkOnBright)
                 .buttonStyle(.borderedProminent)
             } else {
                 Button {

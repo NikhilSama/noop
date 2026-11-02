@@ -245,6 +245,8 @@ struct WatchIntervalView: View {
                     .frame(maxWidth: .infinity)
             }
             .tint(phaseColor)
+            // Dark ink on the bright work / done fills; the blue rest fill keeps white.
+            .foregroundStyle(phase == .rest ? Color(hex: "#FFFFFF") : StrandPalette.inkOnBright)
 
             Button {
                 stopAndReset()

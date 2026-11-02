@@ -159,6 +159,7 @@ struct ScoringGuideView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(StrandPalette.accent)
+            .foregroundStyle(StrandPalette.onAccent)
             .keyboardShortcut(.defaultAction)
         }
         .padding(16)

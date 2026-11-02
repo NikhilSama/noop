@@ -144,6 +144,19 @@ public enum AccentColor: String, CaseIterable, Identifiable, Sendable {
 
     public var focusRing: Color { accent }
 
+    /// Text and icons placed ON an accent fill. Halo Cyan and Mint are bright enough that white on them
+    /// is unreadable, so they take a dark ink; a custom accent picks by its brightness.
+    public var onAccent: Color {
+        switch self {
+        case .halo, .mint: return StrandPalette.inkOnBright
+        case .whoopBlue:   return Color(hex: "#FFFFFF")
+        case .custom:
+            let c = Color.sRGBComponents(hex: StrandPalette.customAccentHex)
+            let luma = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+            return luma > 0.5 ? StrandPalette.inkOnBright : Color(hex: "#FFFFFF")
+        }
+    }
+
     /// XYLO Halo Cyan (#36F1CD). Light mode takes a deeper teal so links stay legible on white.
     static let haloAccent = Color(light: "#0B9C82", dark: "#36F1CD")
     static let haloAccentGlow = Color(light: "#14B89A", dark: "#86F7E1")

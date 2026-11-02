@@ -135,6 +135,10 @@ public enum StrandPalette {
     public static var accentMuted: Color { accentChoice.accentMuted }
     /// Focus ring color — the same accent, on both schemes.
     public static var focusRing: Color { accentChoice.focusRing }
+    /// Text / icons on an accent fill (dark ink on the bright Halo Cyan, white on darker accents).
+    public static var onAccent: Color { accentChoice.onAccent }
+    /// Near-black teal ink for text on bright fills (Halo Cyan, Effort, recovery green), both schemes.
+    public static let inkOnBright = Color(hex: "#04221C")
     /// Opacity for dimmed/disabled sections (shared so screens don't invent their own value).
     public static let disabledOpacity: Double = 0.45
     /// Liquid-scene activity tint shared by heart-rate feedback and transient sync chrome.

@@ -129,6 +129,7 @@ struct WatchLiftView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(s.stage == .working ? StrandPalette.recoveryColor(100) : StrandPalette.effortColor)
+            .foregroundStyle(StrandPalette.inkOnBright)
             .disabled(lift.sending)
         }
         .padding(.horizontal, 4)

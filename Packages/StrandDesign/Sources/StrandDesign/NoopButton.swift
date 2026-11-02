@@ -64,7 +64,7 @@ struct NoopButtonAppearance {
         switch kind {
         case .primary:
             fill = StrandPalette.accent
-            label = StrandPalette.goldDeepText   // designated crisp white for text on accent fills
+            label = StrandPalette.onAccent   // dark ink on the bright accent, white on darker ones
             border = nil
             usesPanelSurface = false
         case .secondary:
