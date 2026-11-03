@@ -29,6 +29,10 @@ struct LiftSessionCoachLogSheet: View {
     @State private var draft: SessionDraft?
     @State private var warnings: [String] = []
     @State private var saving = false
+    /// The user's saved Lift Log programs, offered as a starting point instead of a description.
+    @State private var programs: [LiftProgramRow] = []
+    /// The program the draft was filled from; the saved session is linked to it.
+    @State private var fromProgram: LiftProgramRow?
 
     /// The description is kept per workout until the session is saved, so closing the sheet (or the sheet
     /// being rebuilt behind the keyboard) never loses what was typed or dictated. It is held in memory while
@@ -71,6 +75,9 @@ struct LiftSessionCoachLogSheet: View {
                         .disabled(saving || !(draft?.isSavable ?? false))
                 }
             }
+        }
+        .task {
+            programs = (try? await repo.storeHandle()?.liftPrograms(deviceId: repo.deviceId)) ?? []
         }
         .onAppear {
             if description.isEmpty,
@@ -141,7 +148,66 @@ struct LiftSessionCoachLogSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+
+            if !programs.isEmpty {
+                programPicker
+            }
         }
+    }
+
+    /// The other way in: start from a saved program and correct it to what was done.
+    private var programPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Or import from a program").strandOverline()
+                .padding(.top, NoopMetrics.space2)
+            Text("Fills in the program's exercises, sets and planned weights and reps for you to adjust.")
+                .font(StrandFont.caption)
+                .foregroundStyle(StrandPalette.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(programs, id: \.id) { program in
+                Button {
+                    Task { await importProgram(program) }
+                } label: {
+                    NoopCard {
+                        HStack(spacing: NoopMetrics.space2) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(program.name)
+                                    .font(StrandFont.headline)
+                                    .foregroundStyle(StrandPalette.textPrimary)
+                                if let note = program.note, !note.isEmpty {
+                                    Text(note)
+                                        .font(StrandFont.caption)
+                                        .foregroundStyle(StrandPalette.textSecondary)
+                                        .lineLimit(2)
+                                }
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(StrandFont.footnote.weight(.semibold))
+                                .foregroundStyle(StrandPalette.textTertiary)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(working)
+            }
+        }
+    }
+
+    private func importProgram(_ program: LiftProgramRow) async {
+        guard !working, let store = await repo.storeHandle() else { return }
+        failure = nil
+        let items = (try? await store.liftProgramItems(programId: program.id)) ?? []
+        guard !items.isEmpty else {
+            failure = String(localized: "That program has no exercises yet.")
+            return
+        }
+        let known = (try? await store.liftExercises(deviceId: repo.deviceId)) ?? []
+        draft = SessionDraft(LiftSessionCoachLog.session(fromProgram: program, items: items),
+                             known: known, system: unitSystem)
+        warnings = []
+        fromProgram = program
     }
 
     private func build() async {
@@ -179,7 +245,9 @@ struct LiftSessionCoachLogSheet: View {
                     Text(workoutLabel)
                         .font(StrandFont.caption)
                         .foregroundStyle(StrandPalette.textTertiary)
-                    Text("Check each exercise and set, change anything Coach got wrong, then Save. Sets left without reps aren't saved.")
+                    Text(fromProgram == nil
+                         ? LocalizedStringKey("Check each exercise and set, change anything Coach got wrong, then Save. Sets left without reps aren't saved.")
+                         : LocalizedStringKey("These are the program's targets. Change them to what you actually did, then Save. Sets left without reps aren't saved."))
                         .font(StrandFont.caption)
                         .foregroundStyle(StrandPalette.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -217,8 +285,10 @@ struct LiftSessionCoachLogSheet: View {
                 draft = nil
                 warnings = []
                 failure = nil
+                fromProgram = nil
             } label: {
-                Label("Change the description", systemImage: "arrow.uturn.backward")
+                Label(fromProgram == nil ? LocalizedStringKey("Change the description") : LocalizedStringKey("Start over"),
+                      systemImage: "arrow.uturn.backward")
             }
             .buttonStyle(NoopButtonStyle(.secondary))
         }
@@ -350,7 +420,7 @@ struct LiftSessionCoachLogSheet: View {
         let row = LiftSessionRow(
             id: UUID().uuidString, deviceId: repo.deviceId,
             startTs: workout.startTs, endTs: workout.endTs, sport: workout.sport,
-            programId: nil, programName: logged.name, sessionRpe: nil, note: logged.note)
+            programId: fromProgram?.id, programName: logged.name, sessionRpe: nil, note: logged.note)
         do {
             _ = try await store.upsertLiftSessions([row])
             // The store keys sessions on (deviceId, startTs, sport) and keeps the first id it saw, so the
@@ -391,6 +461,19 @@ enum LiftSessionCoachLog {
     /// The set rows for a logged session: performed order across the session, `setIndex` counted per
     /// exercise name (an exercise returned to later carries on its numbering), and sets with no reps left
     /// out, since a set that was not done has nothing to count.
+    /// A saved program as a session to review: each line's target sets, at its planned weight and the low
+    /// end of its rep range (the part of the plan always met), for the user to correct to what was done.
+    static func session(fromProgram program: LiftProgramRow, items: [LiftProgramItemRow]) -> LoggedSession {
+        LoggedSession(
+            name: program.name,
+            note: nil,
+            exercises: items.sorted { $0.ord < $1.ord }.map { item in
+                let set = LoggedSet(weightKg: item.targetWeightKg, reps: item.targetRepsLow ?? item.targetRepsHigh)
+                return LoggedExercise(exercise: item.exercise, primaryMuscle: nil, secondaryMuscles: [],
+                                      sets: Array(repeating: set, count: min(max(item.targetSets ?? 1, 1), 20)))
+            })
+    }
+
     static func setRows(_ session: LoggedSession, sessionId: String, deviceId: String) -> [LiftSetRow] {
         var rows: [LiftSetRow] = []
         var perExercise: [String: Int] = [:]

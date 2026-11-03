@@ -113,4 +113,22 @@ final class CustomCoachSessionParserTests: XCTestCase {
             XCTAssertFalse(WorkoutLiftSetsCard.applies(to: sport), sport)
         }
     }
+
+    func testProgramBecomesAReviewableSession() {
+        let program = LiftProgramRow(id: "p", deviceId: "d", name: "Upper A", note: nil,
+                                     createdAt: 0, updatedAt: 0, archived: false)
+        func item(_ ord: Int, _ name: String, sets: Int?, low: Int?, high: Int?, kg: Double?) -> LiftProgramItemRow {
+            LiftProgramItemRow(id: "\(ord)", deviceId: "d", programId: "p", ord: ord, exercise: name,
+                               targetSets: sets, targetRepsLow: low, targetRepsHigh: high, targetRpe: nil,
+                               targetWeightKg: kg, restSec: nil, note: nil)
+        }
+        let s = LiftSessionCoachLog.session(fromProgram: program, items: [
+            item(1, "Row", sets: nil, low: nil, high: 12, kg: nil),
+            item(0, "Bench", sets: 3, low: 8, high: 10, kg: 40),
+        ])
+        XCTAssertEqual(s.name, "Upper A")
+        XCTAssertEqual(s.exercises.map(\.exercise), ["Bench", "Row"])
+        XCTAssertEqual(s.exercises[0].sets, Array(repeating: LoggedSet(weightKg: 40, reps: 8), count: 3))
+        XCTAssertEqual(s.exercises[1].sets, [LoggedSet(weightKg: nil, reps: 12)])
+    }
 }
