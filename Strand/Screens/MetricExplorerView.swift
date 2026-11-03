@@ -1022,6 +1022,10 @@ struct MetricDetailView: View {
                     if let breakdownDay {
                         HeroBreakdownSection(metricKey: metric.key, initialDay: breakdownDay, range: effRange)
                     }
+                    // nikhil/custom: the muscle map under the day's workouts, on Effort only.
+                    if leadsWithBreakdown {
+                        MuscleMapCard()
+                    }
                     if leadsWithBreakdown {
                         rangePills(effectiveRange: effRange, windowed: win, windowFellBack: fellBack)
                     }

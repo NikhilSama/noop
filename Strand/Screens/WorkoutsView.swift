@@ -214,6 +214,8 @@ struct WorkoutsView: View {
                 // nikhil/custom: the session log first, as the thing people open this screen for; the
                 // summaries and charts follow it.
                 sessionsSection(rows: windowRows)
+                // nikhil/custom: which muscles are recovering, and which got enough sets this week.
+                MuscleMapCard()
                 effortHero(rows: windowRows, effectiveRange: resolved, groups: groups)
                 summarySection(rows: windowRows, effectiveRange: resolved, groups: groups)
                 heatmapSection()
