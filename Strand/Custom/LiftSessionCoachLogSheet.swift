@@ -4,7 +4,7 @@ import WhoopStore
 
 // nikhil/custom — "Log what you did": after a strength workout has been recorded (Watch, the phone's live
 // workout, or added by hand), describe the session in words, typed or spoken, and the Coach's model turns
-// it into the sets actually performed. Three steps in one sheet: describe, review and edit, save.
+// it into the sets actually performed. Three steps on one page: describe, review and edit, save.
 //
 // The reverse of running a Lift Log program: the workout already exists, so nothing new is written to the
 // workout table. Saving files a Lift Log session pinned to that workout by its natural key (start time and
@@ -39,45 +39,39 @@ struct LiftSessionCoachLogSheet: View {
     @MainActor private static var drafts: [String: String] = [:]
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: NoopMetrics.gap) {
-                    if let draft {
-                        review(draft)
-                    } else {
-                        describeStep
-                    }
-                    if let failure {
-                        NoopCard {
-                            Text(failure)
-                                .font(StrandFont.footnote)
-                                .foregroundStyle(StrandPalette.statusCritical)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+        // Pushed on the workout detail's NavigationStack (see WorkoutDetailView), so no stack of its own and
+        // Back stands in for Cancel.
+        ScrollView {
+            VStack(alignment: .leading, spacing: NoopMetrics.gap) {
+                if let draft {
+                    review(draft)
+                } else {
+                    describeStep
+                }
+                if let failure {
+                    NoopCard {
+                        Text(failure)
+                            .font(StrandFont.footnote)
+                            .foregroundStyle(StrandPalette.statusCritical)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .padding(NoopMetrics.screenPadding)
             }
-            .background(StrandPalette.surfaceBase)
-            .navigationTitle("Log what you did")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if draft != nil {
-                        Button("Save") { Task { await save() } }
-                            .disabled(saving || !(draft?.isSavable ?? false))
-                    }
+            .padding(NoopMetrics.screenPadding)
+        }
+        .background(StrandPalette.surfaceBase)
+        .navigationTitle("Log what you did")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                if draft != nil {
+                    Button("Save") { Task { await save() } }
+                        .disabled(saving || !(draft?.isSavable ?? false))
                 }
             }
         }
-        #if os(macOS)
-        .frame(width: 560, height: 720)
-        #endif
         .onAppear {
             if description.isEmpty,
                let saved = Self.drafts[draftKey] ?? UserDefaults.standard.string(forKey: draftKey) {

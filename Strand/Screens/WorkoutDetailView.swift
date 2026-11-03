@@ -70,6 +70,10 @@ struct WorkoutDetailView: View {
     private struct StepReadout { let count: Int; let fromStrap: Bool }
     @State private var steps: StepReadout?
 
+    // nikhil/custom: "Log what you did" for a strength workout, pushed on this screen's NavigationStack.
+    @State private var loggingLift = false
+    @State private var liftReload = 0
+
     var body: some View {
         ScreenScaffold(title: "\(WorkoutSource.displaySport(row.sport))",
                        subtitle: "\(dateLabel(row.startTs))",
@@ -87,7 +91,7 @@ struct WorkoutDetailView: View {
             statStrip
             // nikhil/custom: the sets of a strength workout, or "Log what you did" when none are logged yet.
             if WorkoutLiftSetsCard.applies(to: row.sport) {
-                WorkoutLiftSetsCard(row: row)
+                WorkoutLiftSetsCard(row: row, reloadToken: liftReload) { loggingLift = true }
             }
             routeCard
             hrCurveCard
@@ -98,6 +102,10 @@ struct WorkoutDetailView: View {
             if let strain = row.strain {
                 effortCard(strain: strain)
             }
+        }
+        // Registered here, outside the scaffold's LazyVStack, where a navigationDestination is ignored.
+        .navigationDestination(isPresented: $loggingLift) {
+            LiftSessionCoachLogSheet(workout: row) { liftReload += 1 }
         }
         .toolbar {
             // A Done affordance for the sheet on both platforms (iOS gets the grabber too).

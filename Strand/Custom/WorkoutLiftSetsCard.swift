@@ -44,6 +44,12 @@ enum LiftSessionAttachment {
 
 struct WorkoutLiftSetsCard: View {
     let row: WorkoutRow
+    /// Bumped by the host after a session is logged, so the card reloads on the way back.
+    var reloadToken: Int = 0
+    /// Opens "Log what you did". The host pushes it on its own NavigationStack: as a third sheet (the
+    /// detail is itself a sheet, often over another) it drew but took no input on iPhone — taps and typing
+    /// never reached it, only the swipe-down did.
+    var onLog: () -> Void
 
     /// Sports whose workouts can carry sets: the strength names NOOP's own workout picker (WorkoutCatalog),
     /// Apple Health and WHOOP imports use, plus the generic "Workout" / "Activity" a Watch session can arrive as.
@@ -61,7 +67,6 @@ struct WorkoutLiftSetsCard: View {
     @State private var session: LiftSessionRow?
     @State private var sets: [LiftSetRow] = []
     @State private var loaded = false
-    @State private var logging = false
     @State private var opened: OpenedSession?
 
     /// The session being read back, wrapped as the Lift Log does rather than making the store row
@@ -83,10 +88,7 @@ struct WorkoutLiftSetsCard: View {
                 Color.clear.frame(height: 0)
             }
         }
-        .task { await load() }
-        .sheet(isPresented: $logging) {
-            LiftSessionCoachLogSheet(workout: row) { await load() }
-        }
+        .task(id: reloadToken) { await load() }
         .sheet(item: $opened) { target in
             LiftSessionDetailSheet(session: target.session) { await load() }
         }
@@ -102,7 +104,7 @@ struct WorkoutLiftSetsCard: View {
                 .font(StrandFont.footnote)
                 .foregroundStyle(StrandPalette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            NoopButton("Log what you did", systemImage: "text.bubble", fullWidth: true) { logging = true }
+            NoopButton("Log what you did", systemImage: "text.bubble", fullWidth: true) { onLog() }
                 .padding(.top, 4)
         }
     }
