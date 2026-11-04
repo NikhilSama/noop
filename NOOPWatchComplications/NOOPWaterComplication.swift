@@ -46,9 +46,16 @@ struct WaterProvider: TimelineProvider {
 
 struct NOOPWaterView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
     let entry: WaterEntry
 
     private var snap: WatchHydrationSnapshot? { entry.snapshot?.current(now: entry.date) }
+    private var behind: Bool { (snap?.behindML(now: entry.date) ?? 0) > 0 }
+    /// Red when behind the hourly pace for the time of day, green when at or ahead of it.
+    private var tint: Color {
+        guard snap != nil else { return StrandPalette.textTertiary }
+        return behind ? StrandPalette.statusCritical : StrandPalette.statusPositive
+    }
 
     var body: some View {
         Group {
@@ -60,74 +67,99 @@ struct NOOPWaterView: View {
             }
         }
         .widgetURL(URL(string: "noop-water://log"))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(accessibility))
     }
 
-    private func litres(_ ml: Int) -> String { String(format: "%.1f", Double(ml) / 1000) }
-    private var behind: Int { snap?.behindML(now: entry.date) ?? 0 }
+    private var bottle: WaterBottle {
+        // On tinted faces colour is dropped, so the fill then reads by contrast with the empty part.
+        WaterBottle(fraction: snap?.fraction ?? 0, tint: tint, fullColor: renderingMode == .fullColor)
+    }
 
     private var circular: some View {
-        Gauge(value: snap?.fraction ?? 0) {
-            Image(systemName: "drop.fill")
-        } currentValueLabel: {
-            Text(snap.map { litres($0.totalML) } ?? "–")
-                .font(StrandFont.rounded(15, weight: .bold))
-        }
-        .gaugeStyle(.accessoryCircularCapacity)
-        .tint(behind > 0 ? StrandPalette.statusWarning : StrandPalette.accent)
-        .widgetAccentable()
+        bottle.padding(.vertical, 5).widgetAccentable()
     }
 
     private var corner: some View {
-        Image(systemName: "drop.fill")
-            .font(.system(size: 20, weight: .semibold))
-            .widgetLabel {
-                Gauge(value: snap?.fraction ?? 0) {
-                    Text("Water")
-                } currentValueLabel: {
-                    Text(snap.map { litres($0.totalML) } ?? "–")
-                }
-                .tint(StrandPalette.accent)
-            }
+        bottle.padding(2).widgetAccentable()
     }
 
     private var inline: some View {
-        Group {
-            if let snap {
-                Text("\(Image(systemName: "drop.fill")) \(litres(snap.totalML))/\(litres(snap.goalML)) L · \(litres(snap.remainingML)) left")
-            } else {
-                Text("\(Image(systemName: "drop.fill")) Water")
-            }
-        }
+        Text("\(Image(systemName: "waterbottle.fill")) \(status)")
     }
 
     private var rectangular: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 4) {
-                Image(systemName: "drop.fill").foregroundStyle(StrandPalette.accent)
-                Text("Water").font(StrandFont.rounded(12, weight: .bold))
-                Spacer(minLength: 0)
-                if let snap {
-                    Text("+\(snap.glassML)").font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(StrandPalette.textSecondary)
-                }
+        HStack(spacing: 10) {
+            bottle.frame(width: 30).widgetAccentable()
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Water").font(StrandFont.rounded(14, weight: .bold))
+                Text(status).font(.system(size: 13, weight: .semibold)).foregroundStyle(tint)
             }
-            if let snap {
-                Text("\(litres(snap.totalML)) / \(litres(snap.goalML)) L")
-                    .font(StrandFont.rounded(17, weight: .bold)).monospacedDigit()
-                Gauge(value: snap.fraction) { EmptyView() }
-                    .gaugeStyle(.accessoryLinearCapacity)
-                    .tint(behind > 0 ? StrandPalette.statusWarning : StrandPalette.accent)
-                Text(snap.remainingML == 0 ? String(localized: "Goal reached")
-                     : behind > 0 ? String(localized: "\(litres(snap.remainingML)) L left · \(behind) ml behind")
-                     : String(localized: "\(litres(snap.remainingML)) L left · on pace"))
-                    .font(.system(size: 11)).monospacedDigit()
-                    .foregroundStyle(StrandPalette.textSecondary)
-            } else {
-                Text("Turn on hydration in NOOP on your iPhone.")
-                    .font(.system(size: 11)).foregroundStyle(StrandPalette.textSecondary)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var status: String {
+        guard let snap else { return String(localized: "Not set up") }
+        if snap.remainingML == 0 { return String(localized: "Goal reached") }
+        return behind ? String(localized: "Behind") : String(localized: "On pace")
+    }
+
+    private var accessibility: String {
+        guard let snap else { return String(localized: "Water: not set up") }
+        return String(localized: "Water \(Int((snap.fraction * 100).rounded())) percent of goal, \(status). Tap to log a glass.")
+    }
+}
+
+/// A water bottle that fills from the bottom: the liquid in `tint`, the empty part faint, a thin outline.
+struct WaterBottle: View {
+    let fraction: Double
+    let tint: Color
+    let fullColor: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            let shape = BottleShape()
+            ZStack(alignment: .bottom) {
+                shape.fill(tint.opacity(fullColor ? 0.18 : 0.25))
+                Rectangle()
+                    .fill(fullColor ? tint : Color.white)
+                    .frame(height: geo.size.height * min(1, max(0, fraction)))
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .mask(shape)
+                shape.stroke(fullColor ? tint : Color.white.opacity(0.8), lineWidth: 1.5)
             }
         }
-        .widgetAccentable()
+        .aspectRatio(0.5, contentMode: .fit)
+    }
+}
+
+/// Cap, neck, rounded shoulders and a body with soft bottom corners, in a 1:2 box.
+struct BottleShape: Shape {
+    func path(in r: CGRect) -> Path {
+        let w = r.width, h = r.height, x = r.minX, y = r.minY
+        let capW = w * 0.42, neckW = w * 0.36
+        let capH = h * 0.09, neckH = h * 0.08, shoulderH = h * 0.12
+        let bodyTop = y + capH + neckH + shoulderH
+        let corner = w * 0.18
+        var p = Path()
+        // Cap.
+        p.addRoundedRect(in: CGRect(x: x + (w - capW) / 2, y: y, width: capW, height: capH),
+                         cornerSize: CGSize(width: w * 0.06, height: w * 0.06))
+        // Neck down into the shoulders, the body, and back up.
+        let nl = x + (w - neckW) / 2, nr = nl + neckW
+        p.move(to: CGPoint(x: nl, y: y + capH))
+        p.addLine(to: CGPoint(x: nl, y: y + capH + neckH))
+        p.addQuadCurve(to: CGPoint(x: x, y: bodyTop), control: CGPoint(x: x, y: y + capH + neckH))
+        p.addLine(to: CGPoint(x: x, y: y + h - corner))
+        p.addQuadCurve(to: CGPoint(x: x + corner, y: y + h), control: CGPoint(x: x, y: y + h))
+        p.addLine(to: CGPoint(x: x + w - corner, y: y + h))
+        p.addQuadCurve(to: CGPoint(x: x + w, y: y + h - corner), control: CGPoint(x: x + w, y: y + h))
+        p.addLine(to: CGPoint(x: x + w, y: bodyTop))
+        p.addQuadCurve(to: CGPoint(x: nr, y: y + capH + neckH), control: CGPoint(x: x + w, y: y + capH + neckH))
+        p.addLine(to: CGPoint(x: nr, y: y + capH))
+        p.closeSubpath()
+        return p
     }
 }
 
@@ -140,7 +172,7 @@ struct NOOPWaterComplication: Widget {
                 .containerBackground(StrandPalette.surfaceBase, for: .widget)
         }
         .configurationDisplayName("Water")
-        .description("Today's water and what's left. Tap to log a glass.")
+        .description("A water bottle that fills as you drink: green on pace, red behind. Tap to log a glass.")
         .supportedFamilies([.accessoryCircular, .accessoryCorner, .accessoryInline, .accessoryRectangular])
     }
 }
