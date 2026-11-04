@@ -38,6 +38,7 @@ struct RootTabView: View {
 
     /// Which quick-action screen the centre FAB is presenting (nil = sheet closed).
     @State private var quickAction: QuickAction?
+    @AppStorage(HydrationStore.enabledKey) private var hydrationEnabled = false
     /// Presents the Devices manager (pair / switch bands) when a screen asks the shell to open it.
     @State private var showDevices = false
     /// A routed v5 pillar screen (Insights hub / Lab Book / fused record / Rhythm) presented as a sheet
@@ -372,7 +373,14 @@ struct RootTabView: View {
     private func quickActionDestination(_ action: QuickAction) -> some View {
         switch action {
         case .menu:
-            QuickActionSheet { picked in
+            QuickActionSheet(waterML: hydrationEnabled ? HydrationPlan.glassML : nil) { picked in
+                // nikhil/custom: "Log water" logs one glass right here and closes; there's no screen.
+                if picked == .water {
+                    quickAction = nil
+                    StrandHaptic.success.play()
+                    Task { await repo.logHydration(amountMl: HydrationPlan.glassML) }
+                    return
+                }
                 // Swap the menu for the chosen destination on the next runloop so the sheet
                 // re-presents cleanly (avoids dismiss/re-present races). Calm easing on re-present.
                 quickAction = nil
@@ -380,7 +388,7 @@ struct RootTabView: View {
                     withAnimation(Self.sheetEase) { quickAction = picked }
                 }
             }
-            .presentationDetents([.height(344)])
+            .presentationDetents([.height(hydrationEnabled ? 410 : 344)])
             .presentationDragIndicator(.hidden)
         case .live:
             quickScreen(LiveView())
@@ -390,6 +398,8 @@ struct RootTabView: View {
             quickScreen(InsightsView())
         case .breathe:
             quickScreen(BreathingView())
+        case .water:
+            EmptyView()
         }
     }
 
@@ -694,13 +704,15 @@ private struct MoreRow: View {
 /// The destinations the centre FAB can present. `.menu` is the action sheet itself; the rest
 /// route to existing screens. `Identifiable` so it drives `.sheet(item:)`.
 private enum QuickAction: Int, Identifiable {
-    case menu, live, workout, journal, breathe
+    case menu, live, workout, journal, breathe, water
     var id: Int { rawValue }
 }
 
 /// The bottom sheet of quick actions presented by the centre FAB. Spec bottom sheet: surfaceOverlay
 /// fill, gold hairline top edge, grab handle, three flat action rows that route to existing screens.
 private struct QuickActionSheet: View {
+    /// nikhil/custom: the glass size when hydration tracking is on (shows a one-tap "Log water" row).
+    let waterML: Int?
     /// Called with the picked destination (the host swaps the menu for that screen).
     let onPick: (QuickAction) -> Void
 
@@ -722,6 +734,10 @@ private struct QuickActionSheet: View {
                 .padding(.bottom, 10)
 
             VStack(spacing: 8) {
+                if let waterML {
+                    row("Log water · \(waterML) ml", icon: "drop.fill", tint: StrandPalette.accent,
+                        trailing: "plus") { onPick(.water) }
+                }
                 row("Live HR", icon: "waveform.path.ecg", tint: StrandPalette.metricRose) { onPick(.live) }
                 row("Start workout", icon: "figure.run", tint: StrandPalette.effortColor) { onPick(.workout) }
                 row("Log journal", icon: "square.and.pencil", tint: StrandPalette.accent) { onPick(.journal) }
@@ -745,7 +761,8 @@ private struct QuickActionSheet: View {
     }
 
     /// One flat action row: hued line-icon tile + title, inset surface, hairline border.
-    private func row(_ title: LocalizedStringKey, icon: String, tint: Color, action: @escaping () -> Void) -> some View {
+    private func row(_ title: LocalizedStringKey, icon: String, tint: Color, trailing: String = "chevron.right",
+                     action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 13) {
                 Image(systemName: icon)
@@ -757,7 +774,7 @@ private struct QuickActionSheet: View {
                     .font(StrandFont.headline)
                     .foregroundStyle(StrandPalette.textPrimary)
                 Spacer()
-                Image(systemName: "chevron.right")
+                Image(systemName: trailing)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(StrandPalette.textTertiary)
             }

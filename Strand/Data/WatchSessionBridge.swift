@@ -220,11 +220,64 @@ final class WatchSessionBridge: NSObject, ObservableObject {
             let data = try JSONEncoder().encode(snap)
             // updateApplicationContext replaces any previous context, so the watch always gets exactly
             // the latest snapshot and never a queued backlog.
-            try session.updateApplicationContext([Self.contextKey: data])
+            var context: [String: Any] = [Self.contextKey: data]
+            // nikhil/custom: the context is replaced wholesale, so it always carries the water state too.
+            if let h = lastHydration?.encoded() { context[WatchHydrationSnapshot.contextKey] = h }
+            try session.updateApplicationContext(context)
         } catch {
             // A failed context update is non-fatal: the app-group mirror above still carries the latest
             // value, and the next dashboard refresh will try again.
         }
+    }
+
+    // MARK: - Hydration (nikhil/custom)
+
+    /// The last water state sent, kept so a score push (which replaces the whole context) carries it too.
+    private var lastHydration: WatchHydrationSnapshot?
+
+    /// Send today's water to the watch: in the application context (latest state, delivered when the watch
+    /// next wakes), as a message when the watch app is open, and as a complication transfer when the water
+    /// complication is on the face, so the face moves without opening the app. Not throttled like the
+    /// scores: it only fires on a real change (a drink logged, the plan edited, a new day).
+    func sendHydration(_ snap: WatchHydrationSnapshot) {
+        let unchanged = lastHydration.map { var a = $0, b = snap; a.asOf = b.asOf; return a == b } ?? false
+        lastHydration = snap
+        guard !unchanged, let session, session.activationState == .activated,
+              let data = snap.encoded() else { return }
+        var context: [String: Any] = [WatchHydrationSnapshot.contextKey: data]
+        if let scores = lastSent.flatMap({ try? JSONEncoder().encode($0) }) { context[Self.contextKey] = scores }
+        try? session.updateApplicationContext(context)
+        if session.isReachable {
+            session.sendMessage([WatchHydrationSnapshot.contextKey: data], replyHandler: nil, errorHandler: nil)
+        }
+        if session.isComplicationEnabled, session.remainingComplicationUserInfoTransfers > 0 {
+            session.transferCurrentComplicationUserInfo([WatchHydrationSnapshot.contextKey: data])
+        }
+    }
+
+    /// Set by the iOS app: log `ml` under the watch's entry id / remove that entry, returning the new state.
+    @MainActor static var onHydrationLog: ((Int, UUID) async -> WatchHydrationSnapshot?)?
+    @MainActor static var onHydrationUndo: ((UUID) async -> WatchHydrationSnapshot?)?
+
+    /// A watch water tap or undo; `reply` gets the new state. False when `message` was neither.
+    nonisolated static func handleHydration(_ message: [String: Any], reply: (([String: Any]) -> Void)?) -> Bool {
+        let idString = (message[WatchHydrationSnapshot.entryIdKey] as? String) ?? (message[WatchHydrationSnapshot.undoMessageKey] as? String)
+        if let ml = message[WatchHydrationSnapshot.logMessageKey] as? Int, ml > 0 {
+            let id = idString.flatMap(UUID.init(uuidString:)) ?? UUID()
+            Task { @MainActor in
+                let snap = await onHydrationLog?(ml, id)
+                reply?(snap?.encoded().map { [WatchHydrationSnapshot.contextKey: $0] } ?? [:])
+            }
+            return true
+        }
+        if message[WatchHydrationSnapshot.undoMessageKey] != nil, let id = idString.flatMap(UUID.init(uuidString:)) {
+            Task { @MainActor in
+                let snap = await onHydrationUndo?(id)
+                reply?(snap?.encoded().map { [WatchHydrationSnapshot.contextKey: $0] } ?? [:])
+            }
+            return true
+        }
+        return false
     }
 
     /// The key the encoded snapshot rides under inside the application context dictionary.
@@ -257,6 +310,11 @@ extension WatchSessionBridge: WCSessionDelegate {
         }
     }
 
+    /// nikhil/custom: a water tap queued while the phone was out of reach.
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        _ = Self.handleHydration(userInfo, reply: nil)
+    }
+
     /// nikhil/custom: set at app launch to buzz the strap when the watch interval timer asks.
     @MainActor static var onStrapBuzz: ((UInt8) -> Void)?
 
@@ -269,6 +327,7 @@ extension WatchSessionBridge: WCSessionDelegate {
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         if Self.handleStrapBuzz(message) { return }
+        if Self.handleHydration(message, reply: nil) { return }
         _ = Self.handleLiftAction(message)
     }
 
@@ -294,6 +353,7 @@ extension WatchSessionBridge: WCSessionDelegate {
             replyHandler([:])
             return
         }
+        if Self.handleHydration(message, reply: replyHandler) { return }
         if message[LiftWatchAction.requestKey] != nil {
             Task { @MainActor in replyHandler(Self.liftStateProvider?() ?? [:]) }
             return

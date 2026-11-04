@@ -16,6 +16,7 @@ struct WatchRootView: View {
     var body: some View {
         TabView(selection: $page) {
             WatchGlanceView().tag(0)
+            WatchWaterView().tag(5)
             WatchLiftView().tag(4)
             WatchBreatheView().tag(1)
             WatchWorkoutView().tag(2)
@@ -23,6 +24,12 @@ struct WatchRootView: View {
         }
         // A phone Lift Log started the workout: show the Lift Log screen (time + HR + current set).
         .onChange(of: workout.phoneStartCount) { _, _ in page = 4 }
+        // nikhil/custom: the water complication opens the app with this link: show Water and log a glass.
+        .onOpenURL { url in
+            guard url.scheme == "noop-water" else { return }
+            page = 5
+            if url.host == "log" { WatchWaterStore.shared.logGlass() }
+        }
         // watchOS page TabView shows the page-indicator dots by default; the iOS background-display-mode
         // customisation is unavailable here, so the plain page style is the right call.
         .tabViewStyle(.page)

@@ -36,6 +36,13 @@ struct HydrationView: View {
     /// #798 - the user's custom container size (ml), editable from the custom-size sheet. Persisted local-only.
     @AppStorage(HydrationStore.customSizeKey) private var customSizeML = HydrationGoal.cupML
     @State private var showCustomSizeSheet = false
+    /// nikhil/custom: the plan (goal / standard / glass / window / reminders).
+    @State private var showPlanSheet = false
+    @AppStorage(HydrationPlan.standardKey) private var standardML = 0
+    @AppStorage(HydrationPlan.glassKey) private var glassML = HydrationPlan.defaultGlassML
+    @AppStorage(HydrationPlan.remindersKey) private var remindersOn = false
+    @AppStorage(HydrationPlan.windowStartKey) private var windowStart = HydrationPlan.defaultWindowStart
+    @AppStorage(HydrationPlan.windowEndKey) private var windowEnd = HydrationPlan.defaultWindowEnd
 
     /// "Card transparency" (0–100, default 100): fades the hydration cards in lockstep with the frosted
     /// cards; content stays readable. Mirrors Kotlin `NoopPrefs.cardOpacityPercent`.
@@ -55,7 +62,10 @@ struct HydrationView: View {
                        topBackground: liquidScaffoldSky()) {
             VStack(alignment: .leading, spacing: NoopMetrics.sectionGap) {
                 ringSection
+                // nikhil/custom: the glass the watch and the + menu log, then the plan.
+                glassButton
                 logSection
+                planSection
                 entriesSection
                 historySection
                 todayTotalSection
@@ -80,6 +90,11 @@ struct HydrationView: View {
                 editingEntry = nil
                 Task { await updateEntry(entry, to: newML) }
             } onCancel: { editingEntry = nil }
+        }
+        // nikhil/custom: edit the plan.
+        .sheet(isPresented: $showPlanSheet) {
+            HydrationPlanSheet { reloadTick &+= 1 }
+                .environmentObject(repo)
         }
         // #798 - set the custom container size.
         .sheet(isPresented: $showCustomSizeSheet) {
@@ -121,9 +136,84 @@ struct HydrationView: View {
                 Text("\(percent)% of today's goal")
                     .font(StrandFont.footnote)
                     .foregroundStyle(StrandPalette.textTertiary)
+                paceLine
             }
             .frame(maxWidth: .infinity)
         }
+    }
+
+    // MARK: - Plan (nikhil/custom)
+
+    private var pace: WatchHydrationSnapshot {
+        WatchHydrationSnapshot(day: Repository.localDayKey(Date()), totalML: Int(totalML.rounded()),
+                               standardML: standardML, standardApplied: entries.contains { $0.isStandard == true },
+                               goalML: goalML, glassML: HydrationPlan.glassML,
+                               windowStartHour: HydrationPlan.windowStartHour, windowEndHour: HydrationPlan.windowEndHour)
+    }
+
+    /// Tracked progress and where it stands against the hourly pace.
+    @ViewBuilder private var paceLine: some View {
+        let p = pace
+        if p.standardML > 0 || remindersOn {
+            let behind = p.behindML()
+            VStack(spacing: 2) {
+                Text("Tracked \(Self.litres(p.trackedML)) of \(Self.litres(p.trackedTargetML)) L · standard \(Self.litres(p.standardML)) L")
+                    .font(StrandFont.footnote).monospacedDigit()
+                    .foregroundStyle(StrandPalette.textSecondary)
+                Text(behind > 0 ? "\(behind) ml behind pace" : "On pace")
+                    .font(StrandFont.footnote.weight(.semibold))
+                    .foregroundStyle(behind > 0 ? StrandPalette.statusWarning : StrandPalette.statusPositive)
+            }
+        }
+    }
+
+    private var glassButton: some View {
+        NoopButton("Log a glass · \(HydrationPlan.glassML) ml", systemImage: "drop.fill", kind: .primary, fullWidth: true) {
+            Task { await add(ml: HydrationPlan.glassML) }
+        }
+        .accessibilityLabel("Log a glass, \(HydrationPlan.glassML) millilitres")
+    }
+
+    private var planSection: some View {
+        card(padding: 18) {
+            VStack(alignment: .leading, spacing: NoopMetrics.space2) {
+                HStack {
+                    Text("Your plan").strandOverline()
+                    Spacer()
+                    Button("Edit") { showPlanSheet = true }
+                        .font(StrandFont.subhead.weight(.semibold))
+                        .foregroundStyle(StrandPalette.accent)
+                        .buttonStyle(.plain)
+                }
+                planRow("Daily goal", "\(Self.litres(goalML)) L" + (HydrationPlan.goalOverrideML > 0 ? "" : " (auto)"))
+                planRow("Standard (not tracked)", standardML > 0 ? "\(Self.litres(standardML)) L" : "None")
+                planRow("Glass", "\(HydrationPlan.glassML) ml")
+                planRow("Window", "\(Self.hour(HydrationPlan.windowStartHour))–\(Self.hour(HydrationPlan.windowEndHour))")
+                planRow("Hourly reminders", remindersOn
+                        ? "\(pace.trackedTargetML / max(1, HydrationPlan.windowEndHour - HydrationPlan.windowStartHour)) ml an hour"
+                        : "Off")
+            }
+        }
+    }
+
+    private func planRow(_ label: LocalizedStringKey, _ value: String) -> some View {
+        HStack {
+            Text(label).font(StrandFont.subhead).foregroundStyle(StrandPalette.textSecondary)
+            Spacer()
+            Text(value).font(StrandFont.subhead.weight(.semibold)).monospacedDigit()
+                .foregroundStyle(StrandPalette.textPrimary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    static func litres(_ ml: Int) -> String {
+        let l = Double(ml) / 1000
+        return l == (l * 10).rounded() / 10 ? String(format: "%.1f", l) : String(format: "%.2f", l)
+    }
+
+    static func hour(_ h: Int) -> String {
+        let d = Calendar.current.date(bySettingHour: h % 24, minute: 0, second: 0, of: Date()) ?? Date()
+        return AppClock.hourMinuteFormatter().string(from: d)
     }
 
     // MARK: - Frosted card helper (matches LiquidTodayView.card: rounded 22 + resting hairline)
@@ -241,11 +331,11 @@ struct HydrationView: View {
         HStack(spacing: 10) {
             Button { editingEntry = entry } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "drop.fill")
+                    Image(systemName: entry.isStandard == true ? "sunrise.fill" : "drop.fill")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(StrandPalette.accent)
                         .accessibilityHidden(true)
-                    Text(Self.entryTimeFmt.string(from: entry.loggedAt))
+                    Text(entry.isStandard == true ? String(localized: "Standard") : Self.entryTimeFmt.string(from: entry.loggedAt))
                         .font(StrandFont.subhead)
                         .foregroundStyle(StrandPalette.textSecondary)
                     Spacer(minLength: 8)

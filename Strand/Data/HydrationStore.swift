@@ -1,6 +1,7 @@
 import Foundation
 import WhoopStore
 import StrandAnalytics
+import StrandDesign
 
 // MARK: - Hydration tracker (MVP) — opt-in, local-only water logging
 //
@@ -65,11 +66,15 @@ struct HydrationEntry: Identifiable, Equatable, Codable {
     let id: UUID
     var amountMl: Int
     var loggedAt: Date
+    /// nikhil/custom: the day's automatic standard amount (`HydrationPlan.standardML`), not a tapped drink.
+    /// Optional so entries saved before it existed still decode.
+    var isStandard: Bool?
 
-    init(id: UUID = UUID(), amountMl: Int, loggedAt: Date = Date()) {
+    init(id: UUID = UUID(), amountMl: Int, loggedAt: Date = Date(), isStandard: Bool? = nil) {
         self.id = id
         self.amountMl = amountMl
         self.loggedAt = loggedAt
+        self.isStandard = isStandard
     }
 }
 
@@ -79,9 +84,10 @@ struct HydrationEntry: Identifiable, Equatable, Codable {
 enum HydrationEntries {
     /// Append a new entry. A non-positive amount is rejected (returns the list unchanged) so a stray 0/negative
     /// can never enter the list, matching `logHydration`'s no-op-on-non-positive contract.
-    static func adding(_ entries: [HydrationEntry], amountMl: Int, at date: Date = Date()) -> [HydrationEntry] {
+    static func adding(_ entries: [HydrationEntry], amountMl: Int, at date: Date = Date(), id: UUID = UUID(),
+                       isStandard: Bool? = nil) -> [HydrationEntry] {
         guard amountMl > 0 else { return entries }
-        return entries + [HydrationEntry(amountMl: amountMl, loggedAt: date)]
+        return entries + [HydrationEntry(id: id, amountMl: amountMl, loggedAt: date, isStandard: isStandard)]
     }
 
     /// Remove the entry with `id` (a no-op if absent).
@@ -93,7 +99,8 @@ enum HydrationEntries {
     /// keeping the list free of zero rows. Unknown ids are ignored.
     static func updating(_ entries: [HydrationEntry], id: UUID, amountMl: Int) -> [HydrationEntry] {
         guard amountMl > 0 else { return removing(entries, id: id) }
-        return entries.map { $0.id == id ? HydrationEntry(id: $0.id, amountMl: amountMl, loggedAt: $0.loggedAt) : $0 }
+        return entries.map { $0.id == id ? HydrationEntry(id: $0.id, amountMl: amountMl, loggedAt: $0.loggedAt,
+                                                          isStandard: $0.isStandard) : $0 }
     }
 
     /// The day total (ml) = sum of the entry amounts, each clamped ≥ 0. Always non-negative.
@@ -113,7 +120,8 @@ extension Repository {
     /// Everything that DISPLAYS a day figure (Today card, ring, detail) wants this. Everything that
     /// WRITES a hand-logged drink must use `hydrationManualTotal` instead — see there.
     func hydrationTotal(day: String) async -> Double {
-        await hydrationManualTotal(day: day) + hydrationImportedTotal(day: day)
+        await applyStandardHydrationIfNeeded(day: day)
+        return await hydrationManualTotal(day: day) + hydrationImportedTotal(day: day)
     }
 
     /// Only what the user logged by hand — the row `logHydration` accumulates into.
@@ -199,8 +207,10 @@ extension Repository {
     /// the new day total (ml). Additive by design — each tap is a quick-add, like the WHOOP buttons.
     /// Mirrors Android `HydrationStore.log`.
     @discardableResult
-    func logHydration(amountMl: Int, day: String? = nil) async -> Double {
+    func logHydration(amountMl: Int, day: String? = nil, id: UUID = UUID()) async -> Double {
         let dayKey = day ?? Repository.localDayKey(Date())
+        // nikhil/custom: the day's standard amount lands before its first drink.
+        await applyStandardHydrationIfNeeded(day: dayKey)
         guard amountMl > 0, let store = await storeHandle() else { return await hydrationTotal(day: dayKey) }
         // MANUAL total, never the combined one (#949) — see `hydrationManualTotal`.
         let current = await hydrationManualTotal(day: dayKey)
@@ -209,7 +219,7 @@ extension Repository {
             [MetricPoint(day: dayKey, key: HydrationStore.key, value: next)],
             deviceId: HydrationStore.sourceId)
         // #798 - also record the per-entry row so the detail can show, edit and delete this exact drink.
-        let entries = HydrationEntries.adding(Self.hydrationEntries(day: dayKey), amountMl: amountMl)
+        let entries = HydrationEntries.adding(Self.hydrationEntries(day: dayKey), amountMl: amountMl, id: id)
         Self.writeHydrationEntries(entries, day: dayKey)
         // #989: hydration writes never bump refreshSeq, so tell the Today card directly.
         noteHydrationChanged()
@@ -312,6 +322,47 @@ extension Repository {
     /// Today's hydration goal (ml) from the profile sex + today's Effort score. Pure math in
     /// `HydrationGoal`; this just feeds it the live inputs (today's `strain` is NOOP's 0–100 Effort).
     func hydrationGoalML(profileSex: String) -> Int {
-        HydrationGoal.dailyGoalML(sex: profileSex, effort: today?.strain)
+        // nikhil/custom: a goal set in the plan replaces the automatic one.
+        let fixed = HydrationPlan.goalOverrideML
+        return fixed > 0 ? fixed : HydrationGoal.dailyGoalML(sex: profileSex, effort: today?.strain)
+    }
+
+    // MARK: - Standard daily amount (nikhil/custom)
+
+    /// Adds the plan's standard amount to today as one entry, once per day. Only ever for today (a past day
+    /// is left as it was), and only once: deleting the entry for a day keeps it deleted, because the day is
+    /// marked when it is added rather than looked up from the entry list.
+    func applyStandardHydrationIfNeeded(day dayKey: String) async {
+        let standard = HydrationPlan.standardML
+        let markKey = HydrationPlan.standardAppliedPrefix + dayKey
+        guard standard > 0, dayKey == Repository.localDayKey(Date()),
+              UserDefaults.standard.bool(forKey: HydrationStore.enabledKey),
+              !UserDefaults.standard.bool(forKey: markKey),
+              let store = await storeHandle() else { return }
+        UserDefaults.standard.set(true, forKey: markKey)
+        let at = Calendar.current.date(bySettingHour: HydrationPlan.windowStartHour, minute: 0, second: 0, of: Date())
+            ?? Date()
+        let entries = HydrationEntries.adding(Self.hydrationEntries(day: dayKey), amountMl: standard,
+                                              at: min(at, Date()), isStandard: true)
+        Self.writeHydrationEntries(entries, day: dayKey)
+        let current = await hydrationManualTotal(day: dayKey)
+        _ = try? await store.upsertMetricSeries(
+            [MetricPoint(day: dayKey, key: HydrationStore.key, value: current + Double(standard))],
+            deviceId: HydrationStore.sourceId)
+        noteHydrationChanged()
+    }
+
+    /// Today's state for the watch and the reminders.
+    func hydrationWatchSnapshot(profileSex: String) async -> WatchHydrationSnapshot {
+        let dayKey = Repository.localDayKey(Date())
+        let total = await hydrationTotal(day: dayKey)
+        let standard = Self.hydrationEntries(day: dayKey).filter { $0.isStandard == true }
+        return WatchHydrationSnapshot(day: dayKey, totalML: Int(total.rounded()),
+                                      standardML: HydrationPlan.standardML,
+                                      standardApplied: !standard.isEmpty,
+                                      goalML: hydrationGoalML(profileSex: profileSex),
+                                      glassML: HydrationPlan.glassML,
+                                      windowStartHour: HydrationPlan.windowStartHour,
+                                      windowEndHour: HydrationPlan.windowEndHour)
     }
 }

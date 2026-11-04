@@ -94,6 +94,26 @@ struct StrandiOSApp: App {
         WatchSessionBridge.onStrapBuzz = { [weak model] loops in
             model?.buzz(loops: loops, gate: HapticPrefs.intervals)
         }
+        // nikhil/custom: hydration — the watch's water taps, the reminder's "Log" button, and the state the
+        // watch shows. All of these can arrive with the app in the background (a watch message or a
+        // notification action wakes it), so they are wired here rather than on a view.
+        HydrationSync.profileSex = { [weak model] in model?.profile.sex ?? "" }
+        HydrationSync.pushToWatch = { [weak watchBridge] snap in watchBridge?.sendHydration(snap) }
+        WatchSessionBridge.onHydrationLog = { [weak model] ml, id in
+            guard let model else { return nil }
+            await model.repo.logHydration(amountMl: ml, id: id)
+            return await HydrationSync.run(model.repo)
+        }
+        WatchSessionBridge.onHydrationUndo = { [weak model] id in
+            guard let model else { return nil }
+            await model.repo.deleteHydrationEntry(id: id)
+            return await HydrationSync.run(model.repo)
+        }
+        NotificationPresenter.shared.onHydrationLog = { [weak model] in
+            guard let model else { return }
+            await model.repo.logHydration(amountMl: HydrationPlan.glassML)
+            await HydrationSync.run(model.repo)
+        }
         CoachBriefScheduler.register(generateBrief: { [weak coach = model.coach] in
             await coach?.generateBrief()
         }, log: { [weak model] line in
@@ -374,6 +394,8 @@ struct StrandiOSApp: App {
         .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .active {
                 Self.backUpIfDue(model.repo)
+                // nikhil/custom: a new day's standard water, reminders and watch state.
+                HydrationSync.changed(model.repo)
                 CoachBriefScheduler.activateIfEnabled { await model.coach.generateBrief() }
                 model.drainPendingIntents(router: router)
                 // iOS starts a Lift Log banner only for an app on screen, so a banner lost while NOOP was in

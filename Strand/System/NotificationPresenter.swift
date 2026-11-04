@@ -23,6 +23,9 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
     /// root has wired it.
     var onCoachBriefTapped: (() -> Void)?
 
+    /// nikhil/custom: logs one glass of water (set by the iOS app).
+    @MainActor var onHydrationLog: (() async -> Void)?
+
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
@@ -39,6 +42,14 @@ final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        // nikhil/custom: the hydration reminder's "Log" button, from the phone or the watch.
+        if response.actionIdentifier == HydrationReminders.logActionId {
+            Task { @MainActor in
+                await onHydrationLog?()
+                completionHandler()
+            }
+            return
+        }
         if response.notification.request.content.categoryIdentifier == CoachBriefScheduler.notificationCategoryId {
             onCoachBriefTapped?()
         }

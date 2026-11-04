@@ -208,7 +208,11 @@ final class Repository: ObservableObject {
     /// this instead of waiting for a full `refreshSeq` data refresh, which a hydration write never causes,
     /// so the card sat stale until an unrelated sync landed. Race-free: Repository is @MainActor.
     @Published private(set) var hydrationSeq = 0
-    func noteHydrationChanged() { hydrationSeq += 1 }
+    func noteHydrationChanged() {
+        hydrationSeq += 1
+        // nikhil/custom: re-plan the pace reminders and update the watch.
+        HydrationSync.changed(self)
+    }
 
     /// Bumped whenever a period-start row is logged or removed. Cycle surfaces use this lightweight
     /// signal to reload their sensitive local history without forcing a full strap-data refresh.
