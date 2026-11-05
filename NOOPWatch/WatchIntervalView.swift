@@ -118,6 +118,7 @@ struct WatchIntervalView: View {
         .background(StrandPalette.surfaceBase.ignoresSafeArea())
         .onReceive(ticker) { _ in tick() }
         .onAppear { if !running && elapsed == 0 { resetToStart() } }
+        .onChange(of: running) { _, on in WatchWaterAutoClose.shared.setBusy("intervals", on) }
     }
 
     // MARK: Header — phase chip + round chip

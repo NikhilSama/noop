@@ -13,6 +13,8 @@ final class WatchWaterStore: ObservableObject {
     static let shared = WatchWaterStore()
 
     @Published private(set) var snapshot: WatchHydrationSnapshot?
+    /// Taps not yet handed to the phone or to the system's queue. Quitting now could lose them.
+    private(set) var sendsInFlight = 0
 
     static let complicationKind = "NOOPWaterComplication"
 
@@ -40,6 +42,7 @@ final class WatchWaterStore: ObservableObject {
         let ml = glassML
         if let snap = snapshot { apply(snap.adding(ml)) }
         WKInterfaceDevice.current().play(.success)
+        sendsInFlight += 1
         send([WatchHydrationSnapshot.logMessageKey: ml, WatchHydrationSnapshot.entryIdKey: UUID().uuidString])
     }
 
@@ -49,7 +52,12 @@ final class WatchWaterStore: ObservableObject {
         let ml = min(glassML, snap.trackedML)
         apply(snap.adding(-ml))
         WKInterfaceDevice.current().play(.click)
+        sendsInFlight += 1
         send([WatchHydrationSnapshot.removeMessageKey: ml])
+    }
+
+    private func sendSettled() {
+        DispatchQueue.main.async { self.sendsInFlight = max(0, self.sendsInFlight - 1) }
     }
 
     private func send(_ payload: [String: Any]) {
@@ -59,22 +67,109 @@ final class WatchWaterStore: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.sendWhenActive(payload, tries: 5) }
             return
         }
-        guard session.isReachable else { session.transferUserInfo(payload); return }
-        session.sendMessage(payload, replyHandler: { [weak self] reply in self?.receive(reply) },
-                            errorHandler: { _ in session.transferUserInfo(payload) })
+        guard session.isReachable else {
+            session.transferUserInfo(payload)
+            sendSettled()
+            return
+        }
+        session.sendMessage(payload,
+                            replyHandler: { [weak self] reply in
+                                self?.receive(reply)
+                                self?.sendSettled()
+                            },
+                            errorHandler: { [weak self] _ in
+                                session.transferUserInfo(payload)
+                                self?.sendSettled()
+                            })
     }
 
     private func sendWhenActive(_ payload: [String: Any], tries: Int) {
         if WCSession.default.activationState == .activated || tries <= 0 {
-            if WCSession.default.activationState == .activated { send(payload) }
+            if WCSession.default.activationState == .activated { send(payload) } else { sendSettled() }
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.sendWhenActive(payload, tries: tries - 1) }
     }
 }
 
+/// After a complication tap logs a glass, the Water page stays up long enough to undo it, then the app
+/// quits so the watch falls back to the face. watchOS has no API for returning to the face, so this ends
+/// the process: fine for a sideloaded build, and it is why every guard here exists. Anything that could
+/// lose work (a running session, a tap still on its way to the phone) keeps the app open instead.
+final class WatchWaterAutoClose: ObservableObject {
+    static let shared = WatchWaterAutoClose()
+    static let seconds: TimeInterval = 10
+    /// How long to wait on an unanswered tap before giving up and leaving the app open.
+    private static let maxWaitForPhone: TimeInterval = 20
+
+    /// When the app will quit; nil when no countdown is running. Drives the ring on the − button.
+    @Published private(set) var deadline: Date?
+    private var pendingFire: DispatchWorkItem?
+    /// Screens whose running state lives in their own view: Breathe and Intervals.
+    private var busyFeatures = Set<String>()
+
+    private init() {}
+
+    private var isBusy: Bool {
+        if !busyFeatures.isEmpty { return true }
+        switch WatchWorkoutSession.shared.phase {
+        case .requesting, .active, .paused, .ending: return true
+        case .unavailable, .denied, .idle, .saved: return false
+        }
+    }
+
+    /// Starts the countdown, unless a session is running.
+    func arm() {
+        guard !isBusy else { cancel(); return }
+        deadline = Date().addingTimeInterval(Self.seconds)
+        schedule(after: Self.seconds, waited: 0)
+    }
+
+    /// A + or − tap: more time, if a countdown is running.
+    func extend() {
+        if deadline != nil { arm() }
+    }
+
+    func cancel() {
+        pendingFire?.cancel()
+        pendingFire = nil
+        deadline = nil
+    }
+
+    func setBusy(_ feature: String, _ busy: Bool) {
+        if busy {
+            busyFeatures.insert(feature)
+            cancel()
+        } else {
+            busyFeatures.remove(feature)
+        }
+    }
+
+    private func schedule(after delay: TimeInterval, waited: TimeInterval) {
+        pendingFire?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.fire(waited: waited) }
+        pendingFire = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func fire(waited: TimeInterval) {
+        guard deadline != nil else { return }
+        guard !isBusy else { cancel(); return }
+        if WatchWaterStore.shared.sendsInFlight > 0 {
+            if waited < Self.maxWaitForPhone {
+                schedule(after: 1, waited: waited + 1)
+            } else {
+                cancel()
+            }
+            return
+        }
+        exit(0)
+    }
+}
+
 struct WatchWaterView: View {
     @ObservedObject private var water = WatchWaterStore.shared
+    @ObservedObject private var autoClose = WatchWaterAutoClose.shared
 
     var body: some View {
         let snap = water.snapshot?.current()
@@ -103,15 +198,36 @@ struct WatchWaterView: View {
                     .foregroundStyle(StrandPalette.textSecondary)
             }
             HStack(spacing: 24) {
-                roundButton("minus", label: "Remove a glass", tint: StrandPalette.textSecondary) { water.removeGlass() }
-                    .disabled(!water.canRemove).opacity(water.canRemove ? 1 : 0.4)
-                roundButton("plus", label: "Log a glass, \(water.glassML) millilitres", tint: StrandPalette.accent) { water.logGlass() }
+                roundButton("minus", label: "Remove a glass", tint: StrandPalette.textSecondary) {
+                    water.removeGlass()
+                    autoClose.extend()
+                }
+                .disabled(!water.canRemove).opacity(water.canRemove ? 1 : 0.4)
+                .overlay { closeCountdown }
+                roundButton("plus", label: "Log a glass, \(water.glassML) millilitres", tint: StrandPalette.accent) {
+                    water.logGlass()
+                    autoClose.extend()
+                }
             }
             .disabled(water.snapshot == nil)
         }
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(StrandPalette.surfaceBase.ignoresSafeArea())
+    }
+
+    /// The undo window running out, drawn around the − button.
+    @ViewBuilder private var closeCountdown: some View {
+        if let deadline = autoClose.deadline {
+            TimelineView(.animation(minimumInterval: 1.0 / 15)) { context in
+                Circle()
+                    .trim(from: 0, to: max(0, deadline.timeIntervalSince(context.date)) / WatchWaterAutoClose.seconds)
+                    .stroke(StrandPalette.textSecondary, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
     }
 
     private func roundButton(_ symbol: String, label: String, tint: Color, action: @escaping () -> Void) -> some View {

@@ -128,6 +128,7 @@ struct WatchBreatheView: View {
             }
         }
         .onDisappear { stop() }
+        .onChange(of: running) { _, on in WatchWaterAutoClose.shared.setBusy("breathe", on) }
     }
 
     // MARK: - Ring

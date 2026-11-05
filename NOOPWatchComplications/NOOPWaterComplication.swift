@@ -4,7 +4,8 @@ import StrandDesign
 
 // nikhil/custom — the water complication: today's water against the goal, and what's left (with whether
 // that's on the hourly pace). Tapping it opens the watch app on the Water page and logs one glass there
-// (`noop-water://log`); watch-face complications can't run an action without opening the app.
+// (`noop-water://log`), then the app closes itself after an undo window (`WatchWaterAutoClose`);
+// watch-face complications can't run an action without opening the app.
 //
 // It reads the `WatchHydrationSnapshot` the phone pushed into the shared App Group. The timeline holds one
 // entry per hour boundary for the rest of the day, because the pace moves on the hour even when nothing is

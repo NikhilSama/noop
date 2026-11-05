@@ -12,6 +12,7 @@ struct WatchRootView: View {
     // nikhil/custom: jump to the Workout page when the phone's Lift Log starts a workout.
     @ObservedObject private var workout = WatchWorkoutSession.shared
     @State private var page = 0
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView(selection: $page) {
@@ -28,7 +29,17 @@ struct WatchRootView: View {
         .onOpenURL { url in
             guard url.scheme == "noop-water" else { return }
             page = 5
-            if url.host == "log" { WatchWaterStore.shared.logGlass() }
+            guard url.host == "log" else { return }
+            WatchWaterStore.shared.logGlass()
+            // Then quit after the undo window. With no state from the phone yet, the page has setup text to read.
+            if WatchWaterStore.shared.snapshot != nil { WatchWaterAutoClose.shared.arm() }
+        }
+        // Swiping away means the app is being used, and pressing the crown has already left it.
+        .onChange(of: page) { _, newPage in
+            if newPage != 5 { WatchWaterAutoClose.shared.cancel() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { WatchWaterAutoClose.shared.cancel() }
         }
         // watchOS page TabView shows the page-indicator dots by default; the iOS background-display-mode
         // customisation is unavailable here, so the plain page style is the right call.
