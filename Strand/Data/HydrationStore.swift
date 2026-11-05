@@ -95,6 +95,19 @@ enum HydrationEntries {
         entries.filter { $0.id != id }
     }
 
+    /// nikhil/custom: take `ml` off the tracked drinks, newest first (the watch's − button). An entry smaller
+    /// than what's left to take goes entirely; the last one touched is trimmed. The standard amount is left alone.
+    static func reducing(_ entries: [HydrationEntry], byMl ml: Int) -> [HydrationEntry] {
+        var left = ml
+        var next = entries
+        for e in entries.sorted(by: { $0.loggedAt > $1.loggedAt }) where left > 0 && e.isStandard != true {
+            let take = min(left, e.amountMl)
+            next = updating(next, id: e.id, amountMl: e.amountMl - take)
+            left -= take
+        }
+        return next
+    }
+
     /// Set an existing entry's amount. A non-positive amount removes the entry (an edit to 0 is a delete),
     /// keeping the list free of zero rows. Unknown ids are ignored.
     static func updating(_ entries: [HydrationEntry], id: UUID, amountMl: Int) -> [HydrationEntry] {
@@ -244,6 +257,15 @@ extension Repository {
     func deleteHydrationEntry(id: UUID, day: String? = nil) async -> Double {
         let dayKey = day ?? Repository.localDayKey(Date())
         let next = HydrationEntries.removing(Self.hydrationEntries(day: dayKey), id: id)
+        Self.writeHydrationEntries(next, day: dayKey)
+        return await rebankHydrationTotal(entries: next, day: dayKey)
+    }
+
+    /// nikhil/custom: take `ml` off today's tracked drinks (`HydrationEntries.reducing`) and re-bank the total.
+    @discardableResult
+    func reduceHydration(byMl ml: Int, day: String? = nil) async -> Double {
+        let dayKey = day ?? Repository.localDayKey(Date())
+        let next = HydrationEntries.reducing(Self.hydrationEntries(day: dayKey), byMl: ml)
         Self.writeHydrationEntries(next, day: dayKey)
         return await rebankHydrationTotal(entries: next, day: dayKey)
     }

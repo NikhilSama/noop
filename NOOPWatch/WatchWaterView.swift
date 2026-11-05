@@ -5,24 +5,22 @@ import WatchKit
 import WidgetKit
 
 // nikhil/custom — water on the wrist. The phone owns the hydration log; the watch shows the latest state it
-// pushed (`WatchHydrationSnapshot`), and a tap here (or on the water complication, which opens this page
-// and logs) sends one glass to the phone. The tap counts on the watch straight away, so the page and the
+// pushed (`WatchHydrationSnapshot`), and + here (or a tap on the water complication, which opens this page
+// and logs) sends one glass to the phone; − takes one off. The tap counts on the watch straight away, so the page and the
 // face move at once; the phone's reply then replaces it with the real total.
 
 final class WatchWaterStore: ObservableObject {
     static let shared = WatchWaterStore()
 
     @Published private(set) var snapshot: WatchHydrationSnapshot?
-    /// The entry the last tap logged, kept briefly so it can be undone.
-    @Published private(set) var lastLogged: (id: UUID, ml: Int)?
-    private var undoExpiry: DispatchWorkItem?
 
-    static let undoWindow: TimeInterval = 8
     static let complicationKind = "NOOPWaterComplication"
 
     private init() { snapshot = WatchHydrationSnapshot.load() }
 
     var glassML: Int { snapshot?.glassML ?? 250 }
+    /// Whether − has anything to take off (it never touches the standard amount).
+    var canRemove: Bool { (snapshot?.current().trackedML ?? 0) > 0 }
 
     /// A state from the phone (context, message, complication transfer or a reply).
     func receive(_ payload: [String: Any]) {
@@ -36,32 +34,22 @@ final class WatchWaterStore: ObservableObject {
         WidgetCenter.shared.reloadTimelines(ofKind: Self.complicationKind)
     }
 
-    /// Log one glass: count it here at once, then tell the phone (a message when it answers, otherwise
-    /// queued to arrive when it next can).
+    /// + : log one glass. It counts here at once, then goes to the phone (a message when it answers,
+    /// otherwise queued to arrive when it next can).
     func logGlass() {
         let ml = glassML
-        let id = UUID()
         if let snap = snapshot { apply(snap.adding(ml)) }
         WKInterfaceDevice.current().play(.success)
-        lastLogged = (id, ml)
-        scheduleUndoExpiry()
-        send([WatchHydrationSnapshot.logMessageKey: ml, WatchHydrationSnapshot.entryIdKey: id.uuidString])
+        send([WatchHydrationSnapshot.logMessageKey: ml, WatchHydrationSnapshot.entryIdKey: UUID().uuidString])
     }
 
-    func undo() {
-        guard let last = lastLogged else { return }
-        lastLogged = nil
-        undoExpiry?.cancel()
-        if let snap = snapshot { apply(snap.adding(-last.ml)) }
+    /// − : take one glass off today's tracked drinks (not below the standard amount).
+    func removeGlass() {
+        guard let snap = snapshot?.current(), snap.trackedML > 0 else { return }
+        let ml = min(glassML, snap.trackedML)
+        apply(snap.adding(-ml))
         WKInterfaceDevice.current().play(.click)
-        send([WatchHydrationSnapshot.undoMessageKey: last.id.uuidString])
-    }
-
-    private func scheduleUndoExpiry() {
-        undoExpiry?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.lastLogged = nil }
-        undoExpiry = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.undoWindow, execute: work)
+        send([WatchHydrationSnapshot.removeMessageKey: ml])
     }
 
     private func send(_ payload: [String: Any]) {
@@ -114,25 +102,26 @@ struct WatchWaterView: View {
                     .font(StrandFont.caption).multilineTextAlignment(.center)
                     .foregroundStyle(StrandPalette.textSecondary)
             }
-            if let last = water.lastLogged {
-                Button { water.undo() } label: {
-                    Label("Undo \(last.ml) ml", systemImage: "arrow.uturn.backward")
-                        .font(StrandFont.caption.weight(.semibold))
-                }
-                .tint(StrandPalette.textSecondary)
-            } else {
-                Button { water.logGlass() } label: {
-                    Label("\(water.glassML) ml", systemImage: "plus")
-                        .font(StrandFont.headline)
-                        .frame(maxWidth: .infinity)
-                }
-                .tint(StrandPalette.accent)
-                .accessibilityLabel("Log a glass, \(water.glassML) millilitres")
+            HStack(spacing: 24) {
+                roundButton("minus", label: "Remove a glass", tint: StrandPalette.textSecondary) { water.removeGlass() }
+                    .disabled(!water.canRemove).opacity(water.canRemove ? 1 : 0.4)
+                roundButton("plus", label: "Log a glass, \(water.glassML) millilitres", tint: StrandPalette.accent) { water.logGlass() }
             }
+            .disabled(water.snapshot == nil)
         }
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(StrandPalette.surfaceBase.ignoresSafeArea())
+    }
+
+    private func roundButton(_ symbol: String, label: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 18, weight: .bold)).frame(width: 40, height: 40)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(tint)
+        .background(Circle().fill(tint.opacity(0.22)))
+        .accessibilityLabel(label)
     }
 
     @ViewBuilder private func status(_ snap: WatchHydrationSnapshot) -> some View {

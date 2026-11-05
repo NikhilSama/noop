@@ -258,14 +258,23 @@ final class WatchSessionBridge: NSObject, ObservableObject {
     /// Set by the iOS app: log `ml` under the watch's entry id / remove that entry, returning the new state.
     @MainActor static var onHydrationLog: ((Int, UUID) async -> WatchHydrationSnapshot?)?
     @MainActor static var onHydrationUndo: ((UUID) async -> WatchHydrationSnapshot?)?
+    /// Set by the iOS app: take `ml` off today's tracked drinks (the watch's − button).
+    @MainActor static var onHydrationRemove: ((Int) async -> WatchHydrationSnapshot?)?
 
-    /// A watch water tap or undo; `reply` gets the new state. False when `message` was neither.
+    /// A watch water +, − or undo; `reply` gets the new state. False when `message` was neither.
     nonisolated static func handleHydration(_ message: [String: Any], reply: (([String: Any]) -> Void)?) -> Bool {
         let idString = (message[WatchHydrationSnapshot.entryIdKey] as? String) ?? (message[WatchHydrationSnapshot.undoMessageKey] as? String)
         if let ml = message[WatchHydrationSnapshot.logMessageKey] as? Int, ml > 0 {
             let id = idString.flatMap(UUID.init(uuidString:)) ?? UUID()
             Task { @MainActor in
                 let snap = await onHydrationLog?(ml, id)
+                reply?(snap?.encoded().map { [WatchHydrationSnapshot.contextKey: $0] } ?? [:])
+            }
+            return true
+        }
+        if let ml = message[WatchHydrationSnapshot.removeMessageKey] as? Int, ml > 0 {
+            Task { @MainActor in
+                let snap = await onHydrationRemove?(ml)
                 reply?(snap?.encoded().map { [WatchHydrationSnapshot.contextKey: $0] } ?? [:])
             }
             return true

@@ -60,4 +60,16 @@ final class CustomHydrationPaceTests: XCTestCase {
         XCTAssertEqual(edited[0].isStandard, true)
         XCTAssertEqual(edited[0].amountMl, 1250)
     }
+
+    func testMinusTakesOffNewestTrackedDrinksButNotTheStandard() {
+        let t0 = Date(timeIntervalSince1970: 1_000_000)
+        var e = HydrationEntries.adding([], amountMl: 1500, at: t0, isStandard: true)
+        e = HydrationEntries.adding(e, amountMl: 250, at: t0.addingTimeInterval(60))
+        e = HydrationEntries.adding(e, amountMl: 100, at: t0.addingTimeInterval(120))
+        let once = HydrationEntries.reducing(e, byMl: 250)   // the 100 goes, the 250 is trimmed to 100
+        XCTAssertEqual(once.map(\.amountMl), [1500, 100])
+        let all = HydrationEntries.reducing(once, byMl: 250)
+        XCTAssertEqual(all.map(\.amountMl), [1500])
+        XCTAssertEqual(HydrationEntries.reducing(all, byMl: 250).map(\.amountMl), [1500])
+    }
 }

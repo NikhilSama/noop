@@ -91,6 +91,8 @@ public struct WatchHydrationSnapshot: Codable, Equatable, Sendable {
     /// Watch → phone: remove the entry logged with this id. Payload `[undoMessageKey: String uuid]`.
     public static let undoMessageKey = "hydration.undo"
     public static let entryIdKey = "hydration.id"
+    /// Watch → phone: take `ml` off today's tracked drinks, newest first. Payload `[removeMessageKey: Int ml]`.
+    public static let removeMessageKey = "hydration.remove"
 
     /// App-group key the latest snapshot is stored under, read by the watch app and the complication.
     public static let storageKey = "latestWatchHydration"

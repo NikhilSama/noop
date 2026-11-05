@@ -109,6 +109,11 @@ struct StrandiOSApp: App {
             await model.repo.deleteHydrationEntry(id: id)
             return await HydrationSync.run(model.repo)
         }
+        WatchSessionBridge.onHydrationRemove = { [weak model] ml in
+            guard let model else { return nil }
+            await model.repo.reduceHydration(byMl: ml)
+            return await HydrationSync.run(model.repo)
+        }
         NotificationPresenter.shared.onHydrationLog = { [weak model] in
             guard let model else { return }
             await model.repo.logHydration(amountMl: HydrationPlan.glassML)
