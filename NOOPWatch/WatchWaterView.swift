@@ -98,7 +98,7 @@ final class WatchWaterStore: ObservableObject {
 /// lose work (a running session, a tap still on its way to the phone) keeps the app open instead.
 final class WatchWaterAutoClose: ObservableObject {
     static let shared = WatchWaterAutoClose()
-    static let seconds: TimeInterval = 10
+    static let seconds: TimeInterval = 5
     /// How long to wait on an unanswered tap before giving up and leaving the app open.
     private static let maxWaitForPhone: TimeInterval = 20
 
