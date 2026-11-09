@@ -17,6 +17,8 @@ struct NutritionDayEditor: View {
     @State private var recipes: [String: NutritionRecipe] = [:]
     @State private var picking: Picking?
     @State private var loaded = false
+    /// The recipe opened by tapping a row.
+    @State private var openRecipe: NutritionRecipe?
 
     /// What the recipe picker is choosing for.
     struct Picking: Identifiable {
@@ -70,6 +72,10 @@ struct NutritionDayEditor: View {
             }
             .environmentObject(repo)
         }
+        .sheet(item: $openRecipe) { r in
+            NutritionEstimateSheet(oneOff: r.oneOff, editing: r) { _ in openRecipe = nil }
+                .environmentObject(repo)
+        }
     }
 
     // MARK: Rows
@@ -80,20 +86,13 @@ struct NutritionDayEditor: View {
         let protein = (recipe?.macros.proteinG ?? 0) * item.portion
         let slot = standardSlots.first { $0.id == item.id }
         return HStack(alignment: .firstTextBaseline, spacing: NoopMetrics.space2) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.label).font(StrandFont.caption).foregroundStyle(StrandPalette.textTertiary)
-                Text(Self.portionPrefix(item.portion) + (recipe?.name ?? item.recipeId))
-                    .font(StrandFont.subhead).foregroundStyle(StrandPalette.textPrimary)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 4)
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("\(Int(kcal.rounded())) kcal").font(StrandFont.subhead).monospacedDigit()
-                    .foregroundStyle(StrandPalette.textPrimary)
-                Text("\(Int(protein.rounded())) g protein").font(StrandFont.caption).monospacedDigit()
-                    .foregroundStyle(StrandPalette.textTertiary)
-            }
+            // Tapping the row (not the ••• menu) opens its recipe: parts, numbers, notes, editable.
+            Button { openRecipe = recipe } label: { rowText(item, recipe: recipe, kcal: kcal, protein: protein) }
+                .buttonStyle(.plain)
+                .disabled(recipe == nil)
             Menu {
+                Button { openRecipe = recipe } label: { Label("Open recipe", systemImage: "book") }
+                    .disabled(recipe == nil)
                 Button { picking = Picking(rowId: item.id, swaps: slot?.swaps ?? []) } label: {
                     Label("Swap", systemImage: "arrow.left.arrow.right")
                 }
@@ -112,6 +111,26 @@ struct NutritionDayEditor: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 6)
+    }
+
+    private func rowText(_ item: NutritionItem, recipe: NutritionRecipe?, kcal: Double, protein: Double) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: NoopMetrics.space2) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.label).font(StrandFont.caption).foregroundStyle(StrandPalette.textTertiary)
+                Text(Self.portionPrefix(item.portion) + (recipe?.name ?? item.recipeId))
+                    .font(StrandFont.subhead).foregroundStyle(StrandPalette.textPrimary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+            Spacer(minLength: 4)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(Int(kcal.rounded())) kcal").font(StrandFont.subhead).monospacedDigit()
+                    .foregroundStyle(StrandPalette.textPrimary)
+                Text("\(Int(protein.rounded())) g protein").font(StrandFont.caption).monospacedDigit()
+                    .foregroundStyle(StrandPalette.textTertiary)
+            }
+        }
+        .contentShape(Rectangle())
     }
 
     static func portionPrefix(_ p: Double) -> String { p == 1 ? "" : portionLabel(p) + " " }
