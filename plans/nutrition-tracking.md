@@ -77,3 +77,38 @@ slug, never duplicates. Archived cut-phase plan: not imported as a standard day.
    estimate / review / re-estimate flow, top-up list.
 4. **Journal.** Yesterday's food section, locking rules.
 5. **Vault pipeline.** Ingest + nutrition scripts, food-logging skill.
+
+## Import file format (`noop-nutrition-import.json`, version 1)
+
+Written by `Tools/nutrition/vault_to_import.py`, read by the app's importer. All numbers per ONE
+serving / portion 1. Recipe ids are the vault note's file stem (`standard-lunch`); generated one-offs use
+`oneoff-<yyyy-mm-dd>-<slug>`. Macro keys everywhere: `kcal, proteinG, carbsG, fiberG, sugarG, fatG,
+satFatG` (numbers; missing → 0) and optional `sodiumMg`.
+
+```json
+{
+  "version": 1,
+  "generatedAt": "2026-11-09T12:00:00Z",
+  "recipes": [
+    { "id": "standard-lunch", "name": "Standard Lunch", "serving": "1 lunch", "category": null,
+      "kcal": 552, "proteinG": 34, "carbsG": 62, "fiberG": 16, "sugarG": 29, "fatG": 18, "satFatG": 4.5,
+      "sodiumMg": null, "oneOff": false, "notes": "markdown body after the frontmatter",
+      "parts": [ { "name": "2 whole eggs", "kcal": 144, "proteinG": 12.6, "carbsG": 0.8, "fiberG": 0,
+                   "sugarG": 0.4, "fatG": 9.6, "satFatG": 3.2, "sodiumMg": null } ] }
+  ],
+  "standard": {
+    "effectiveDay": "2026-11-09",
+    "slots": [ { "label": "Lunch", "minuteOfDay": 810, "recipeId": "standard-lunch", "portion": 1,
+                 "swaps": [] } ]
+  },
+  "days": [
+    { "day": "2026-07-14", "state": "edited",
+      "items": [ { "label": "Lunch", "minuteOfDay": 810, "recipeId": "standard-lunch", "portion": 0.5 } ] }
+  ]
+}
+```
+
+- `standard.effectiveDay` is the tracking start: a day before the earliest standard version with no
+  stored row is "no data", never the standard day.
+- `days[].state`: `edited` (explicit rows) or `untracked`.
+- `parts` totals should match the recipe totals; the converter reports any recipe off by > 2%.
