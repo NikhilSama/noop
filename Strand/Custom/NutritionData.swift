@@ -10,6 +10,14 @@ enum NutritionPrefs {
     static let enabledKey = "noop.nutritionEnabled"
 }
 
+/// Bumped after any nutrition write, so cards re-read (Repository is upstream; this keeps the signal here).
+@MainActor
+final class NutritionChanges: ObservableObject {
+    static let shared = NutritionChanges()
+    @Published private(set) var seq = 0
+    func bump() { seq &+= 1 }
+}
+
 extension Repository {
     /// The store with the nutrition tables guaranteed to exist.
     func nutritionStore() async -> WhoopStore? {
@@ -148,6 +156,7 @@ extension Repository {
             recipes: recipes,
             standard: file.standard.map { (effectiveDay: $0.effectiveDay, slots: $0.slots.map(\.value)) },
             days: days, at: now)
+        await NutritionChanges.shared.bump()
         let regular = recipes.filter { !$0.oneOff }.count
         var summary = String(localized: "\(regular) recipes, \(recipes.count - regular) one-offs, \(result.days) days imported")
         if result.skippedDays > 0 {

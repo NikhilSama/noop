@@ -370,6 +370,8 @@ struct LiquidTodayView: View {
                         case .hero:
                             heroCard
                             if chargeLegacyRRGap { ChargeLegacyRRGapNote() }
+                            // nikhil/custom: calories in vs out (self-hides unless Nutrition is on).
+                            if selectedDayOffset == 0 { NutritionTodayCard() }
                         // nikhil/custom: this slot now starts a regular workout (Strand/Custom/TodayWorkoutStartRow).
                         case .liveSession: if liveSessionsBeta { TodayWorkoutStartRow(cardOpacity: cardOpacity) }
                         case .synthesis: synthesisSection

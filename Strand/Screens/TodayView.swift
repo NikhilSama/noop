@@ -1942,6 +1942,8 @@ struct TodayView: View {
         switch section {
         case .hero:
             classicHeroSection
+            // nikhil/custom: calories in vs out (self-hides unless Nutrition is on).
+            NutritionTodayCard()
         case .liveSession:
             if liveSessionsBeta { liveSessionStartSection }
         case .synthesis:
