@@ -1708,6 +1708,11 @@ struct SettingsView: View {
 
                 rowDivider
 
+                // nikhil/custom — nutrition tracking (recipes, standard day, calories in vs out).
+                NutritionSettingsRows()
+
+                rowDivider
+
                 Toggle(isOn: $autoDetectWorkoutsEnabled) {
                     Text("Auto-detect workouts")
                         .font(StrandFont.subhead)
