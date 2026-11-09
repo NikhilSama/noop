@@ -232,6 +232,9 @@ struct InsightsView: View {
                                    numericAnswers: dayNumeric,
                                    dayOffset: $journalDayOffset,
                                    onChanged: { Task { await load() } })
+                    // nikhil/custom: the food of the day before this journal day, editable, below the journal.
+                    NutritionJournalSection(journalDay: Repository.localDayKey(
+                        Calendar.current.date(byAdding: .day, value: -journalDayOffset, to: Date()) ?? Date()))
                     // Mind, daily mood check-in + mood↔body correlations.
                     // Self-contained (owns its own load/state); sits with the
                     // journal card so the two daily-logging surfaces read as one

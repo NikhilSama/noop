@@ -69,6 +69,7 @@ struct JournalDailyPromptSheet: View {
                     JournalLogCard(importedQuestions: importedQuestions, answers: answers,
                                    numericAnswers: numericAnswers, dayOffset: $dayOffset, compact: true,
                                    onChanged: { Task { await load() } })
+                    NutritionJournalSection(journalDay: dayKey)
                 }
                 .screenPadding()
                 .padding(.vertical, NoopMetrics.space4)
@@ -80,6 +81,10 @@ struct JournalDailyPromptSheet: View {
                     Task {
                         await JournalDefaults.apply(day: dayKey, repo: repo, importedQuestions: importedQuestions,
                                                     answers: answers, numericAnswers: numericAnswers)
+                        // nikhil/custom: finishing the journal makes yesterday's food final.
+                        if UserDefaults.standard.bool(forKey: NutritionPrefs.enabledKey) {
+                            await repo.lockNutritionDay(Repository.dayKeys(offset: -1, from: dayKey))
+                        }
                         onClose()
                     }
                 }

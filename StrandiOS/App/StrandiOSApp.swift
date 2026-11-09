@@ -401,6 +401,10 @@ struct StrandiOSApp: App {
                 Self.backUpIfDue(model.repo)
                 // nikhil/custom: a new day's standard water, reminders and watch state.
                 HydrationSync.changed(model.repo)
+                // nikhil/custom: days whose following day ended without the journal stand as they are.
+                if UserDefaults.standard.bool(forKey: NutritionPrefs.enabledKey) {
+                    Task { await model.repo.autoLockNutritionDays() }
+                }
                 CoachBriefScheduler.activateIfEnabled { await model.coach.generateBrief() }
                 model.drainPendingIntents(router: router)
                 // iOS starts a Lift Log banner only for an app on screen, so a banner lost while NOOP was in

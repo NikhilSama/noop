@@ -89,3 +89,13 @@ final class CustomNutritionEstimatorTests: XCTestCase {
         XCTAssertEqual(picks.map(\.id), ["brownie", "nuts", "chocolate"])
     }
 }
+
+final class CustomNutritionDayKeyTests: XCTestCase {
+    func testDayOffsetsCrossMonthsAndYears() {
+        XCTAssertEqual(Repository.dayKeys(offset: -1, from: "2026-03-01"), "2026-02-28")
+        XCTAssertEqual(Repository.dayKeys(offset: 1, from: "2026-12-31"), "2027-01-01")
+        XCTAssertEqual(Repository.dayKeys(from: "2026-10-30", to: "2026-11-02"),
+                       ["2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02"])
+        XCTAssertEqual(Repository.dayKeys(from: "2026-11-02", to: "2026-11-01"), [])
+    }
+}

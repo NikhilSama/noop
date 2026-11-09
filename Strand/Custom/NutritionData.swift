@@ -45,7 +45,7 @@ extension Repository {
     }
 
     /// yyyy-MM-dd keys from `from` to `to`, in order; empty when reversed or unparsable.
-    static func dayKeys(from: String, to: String) -> [String] {
+    nonisolated static func dayKeys(from: String, to: String) -> [String] {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)
         f.locale = Locale(identifier: "en_US_POSIX")
