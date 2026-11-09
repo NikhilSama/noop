@@ -120,3 +120,18 @@ final class CustomNutritionStoreTests: XCTestCase {
         XCTAssertEqual(NutritionMacros(kcal: 100, sodiumMg: 10).scaled(1.5).kcal, 150)
     }
 }
+
+extension CustomNutritionStoreTests {
+    func testSlotIdsCarryAcrossStandardVersions() async throws {
+        let s = try await store()
+        let lunch = NutritionItem(id: "slot-lunch", label: "Lunch", minuteOfDay: 810, recipeId: "a")
+        try await s.saveNutritionStandard(slots: [lunch], effectiveDay: "2026-11-01", createdAt: 1)
+        var swapped = lunch
+        swapped.recipeId = "b"
+        try await s.saveNutritionStandard(slots: [swapped], effectiveDay: "2026-11-01", createdAt: 2)
+        let versions = try await s.nutritionStandardVersions()
+        let today = NutritionResolve.standardSlots(on: "2026-11-02", versions: versions)
+        XCTAssertEqual(today?.map(\.id), ["slot-lunch"])
+        XCTAssertEqual(today?.map(\.recipeId), ["b"], "the later save on the same day wins")
+    }
+}

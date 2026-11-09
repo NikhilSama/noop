@@ -8,6 +8,8 @@ import WhoopStore
 // The deficit segment is the real gap (out − in); a tick marks the target. When in > out the gap shows as a
 // red surplus on the OUT bar instead. One line names both levers, one the Mon–Sun ledger.
 struct NutritionTodayCard: View {
+    /// On Today the card opens the Nutrition screen; on that screen it doesn't link to itself.
+    var linksToScreen = true
     @EnvironmentObject private var repo: Repository
     @AppStorage(NutritionPrefs.enabledKey) private var enabled = false
     @ObservedObject private var changes = NutritionChanges.shared
@@ -29,7 +31,14 @@ struct NutritionTodayCard: View {
     var body: some View {
         Group {
             if enabled, let snapshot {
-                NoopCard(tint: StrandPalette.metricAmber) { content(snapshot) }
+                if linksToScreen {
+                    NavigationLink { NutritionView() } label: {
+                        NoopCard(tint: StrandPalette.metricAmber) { content(snapshot) }
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    NoopCard(tint: StrandPalette.metricAmber) { content(snapshot) }
+                }
             }
         }
         .task(id: "\(repo.refreshSeq)-\(changes.seq)-\(enabled)") {

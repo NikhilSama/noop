@@ -226,8 +226,10 @@ extension WhoopStore {
                 t.column("effectiveDay", .text).notNull()
                 t.column("createdAt", .integer).notNull()
             }
+            // A slot keeps its id from version to version (a day's rows carry it to stay "standard"), so the
+            // key is the pair.
             try db.create(table: "nutritionStandardSlot", options: [.ifNotExists]) { t in
-                t.column("id", .text).primaryKey()
+                t.column("id", .text).notNull()
                 t.column("versionId", .text).notNull()
                 t.column("ord", .integer).notNull()
                 t.column("label", .text).notNull()
@@ -235,6 +237,7 @@ extension WhoopStore {
                 t.column("recipeId", .text).notNull()
                 t.column("portion", .double).notNull().defaults(to: 1)
                 t.column("swaps", .text)   // comma-joined recipe ids
+                t.primaryKey(["versionId", "id"])
             }
             try db.create(index: "idx_nutritionStandardSlot_version", on: "nutritionStandardSlot",
                           columns: ["versionId", "ord"], options: [.ifNotExists])
@@ -349,7 +352,8 @@ extension WhoopStore {
 
     // MARK: Standard day
 
-    /// Save a new version of the standard day, in force from `effectiveDay`.
+    /// Save a new version of the standard day, in force from `effectiveDay`. Slots keep their ids, so a
+    /// day already edited from an earlier version still knows which rows were standard.
     public func saveNutritionStandard(slots: [NutritionItem], effectiveDay: String, createdAt: Int) async throws {
         try syncWrite { db in try Self.writeStandard(slots: slots, effectiveDay: effectiveDay, createdAt: createdAt, db: db) }
     }
@@ -362,7 +366,7 @@ extension WhoopStore {
             try db.execute(sql: """
                 INSERT INTO nutritionStandardSlot (id, versionId, ord, label, minuteOfDay, recipeId, portion, swaps)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, arguments: [UUID().uuidString, versionId, i, s.label, s.minuteOfDay, s.recipeId, s.portion,
+                """, arguments: [s.id, versionId, i, s.label, s.minuteOfDay, s.recipeId, s.portion,
                                  s.swaps.isEmpty ? nil : s.swaps.joined(separator: ",")])
         }
     }

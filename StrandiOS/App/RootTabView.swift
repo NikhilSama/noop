@@ -39,6 +39,7 @@ struct RootTabView: View {
     /// Which quick-action screen the centre FAB is presenting (nil = sheet closed).
     @State private var quickAction: QuickAction?
     @AppStorage(HydrationStore.enabledKey) private var hydrationEnabled = false
+    @AppStorage(NutritionPrefs.enabledKey) private var nutritionEnabled = false
     /// Presents the Devices manager (pair / switch bands) when a screen asks the shell to open it.
     @State private var showDevices = false
     /// A routed v5 pillar screen (Insights hub / Lab Book / fused record / Rhythm) presented as a sheet
@@ -373,7 +374,7 @@ struct RootTabView: View {
     private func quickActionDestination(_ action: QuickAction) -> some View {
         switch action {
         case .menu:
-            QuickActionSheet(waterML: hydrationEnabled ? HydrationPlan.glassML : nil) { picked in
+            QuickActionSheet(waterML: hydrationEnabled ? HydrationPlan.glassML : nil, food: nutritionEnabled) { picked in
                 // nikhil/custom: "Log water" logs one glass right here and closes; there's no screen.
                 if picked == .water {
                     quickAction = nil
@@ -388,7 +389,7 @@ struct RootTabView: View {
                     withAnimation(Self.sheetEase) { quickAction = picked }
                 }
             }
-            .presentationDetents([.height(hydrationEnabled ? 410 : 344)])
+            .presentationDetents([.height((hydrationEnabled ? 410 : 344) + (nutritionEnabled ? 66 : 0))])
             .presentationDragIndicator(.hidden)
         case .live:
             quickScreen(LiveView())
@@ -400,6 +401,8 @@ struct RootTabView: View {
             quickScreen(BreathingView())
         case .water:
             EmptyView()
+        case .food:
+            NutritionQuickAdd().environmentObject(repo)
         }
     }
 
@@ -704,7 +707,7 @@ private struct MoreRow: View {
 /// The destinations the centre FAB can present. `.menu` is the action sheet itself; the rest
 /// route to existing screens. `Identifiable` so it drives `.sheet(item:)`.
 private enum QuickAction: Int, Identifiable {
-    case menu, live, workout, journal, breathe, water
+    case menu, live, workout, journal, breathe, water, food
     var id: Int { rawValue }
 }
 
@@ -713,6 +716,8 @@ private enum QuickAction: Int, Identifiable {
 private struct QuickActionSheet: View {
     /// nikhil/custom: the glass size when hydration tracking is on (shows a one-tap "Log water" row).
     let waterML: Int?
+    /// nikhil/custom: nutrition tracking is on (shows "Add food").
+    let food: Bool
     /// Called with the picked destination (the host swaps the menu for that screen).
     let onPick: (QuickAction) -> Void
 
@@ -737,6 +742,9 @@ private struct QuickActionSheet: View {
                 if let waterML {
                     row("Log water · \(waterML) ml", icon: "drop.fill", tint: StrandPalette.accent,
                         trailing: "plus") { onPick(.water) }
+                }
+                if food {
+                    row("Add food", icon: "fork.knife", tint: StrandPalette.metricAmber) { onPick(.food) }
                 }
                 row("Live HR", icon: "waveform.path.ecg", tint: StrandPalette.metricRose) { onPick(.live) }
                 row("Start workout", icon: "figure.run", tint: StrandPalette.effortColor) { onPick(.workout) }

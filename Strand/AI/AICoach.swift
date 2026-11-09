@@ -1153,6 +1153,14 @@ final class AICoachEngine: ObservableObject {
                                               messages: [(role: .user, content: text)], session: session)
     }
 
+    /// nikhil/custom: `oneShot` with photos attached (nutrition estimates from a label or plate), and an
+    /// optional model in place of the chat's (the estimator's Sonnet default / Opus re-estimate).
+    func oneShotVision(systemPrompt: String, text: String, images: [Data], model modelOverride: String?) async throws -> String {
+        guard isConfigured, let key = resolvedKey else { throw AICoachError.noKey }
+        return try await NutritionVision.send(provider: provider, key: key, model: modelOverride ?? model,
+                                              systemPrompt: systemPrompt, text: text, images: images, session: session)
+    }
+
     /// Dispatch to the user's chosen provider client.
     private func callProvider(key: String,
                               messages: [(role: ChatMessage.Role, content: String)]) async throws -> String {

@@ -57,3 +57,35 @@ final class CustomNutritionBalanceTests: XCTestCase {
         XCTAssertEqual(NutritionBalance.trimSuggestion(items: slots, recipes: recipes, need: 500)?.saves, 276)
     }
 }
+
+/// nikhil/custom — reading the estimator's reply and the evening top-up order.
+final class CustomNutritionEstimatorTests: XCTestCase {
+    func testParsesAFencedReplyAndTotalsTheParts() {
+        let reply = """
+        Here you go:
+        ```json
+        {"name": "Dal makhani", "serving": "1 bowl (250 g)", "notes": "assumed 1 tbsp butter",
+         "parts": [{"name": "Dal", "kcal": 220, "proteinG": "11", "carbsG": 28, "fiberG": 8, "sugarG": 2, "fatG": 6, "satFatG": 2},
+                   {"name": "Butter 1 tbsp", "kcal": 102, "proteinG": 0.1, "fatG": 11.5, "satFatG": 7.3, "sodiumMg": 90}]}
+        ```
+        """
+        let e = NutritionEstimator.parse(reply)
+        XCTAssertEqual(e?.name, "Dal makhani")
+        XCTAssertEqual(e?.parts.count, 2)
+        XCTAssertEqual(e?.totals.kcal, 322)
+        XCTAssertEqual(e?.totals.proteinG ?? 0, 11.1, accuracy: 0.0001)
+        XCTAssertEqual(e?.totals.sodiumMg, 90)
+        XCTAssertNil(NutritionEstimator.parse("no json here"))
+        XCTAssertNil(NutritionEstimator.parse(#"{"name": "x", "parts": []}"#))
+    }
+
+    func testTopUpsFitTheSpareAndFavourProteinAndFibre() {
+        func r(_ id: String, _ kcal: Double, _ p: Double, _ f: Double, oneOff: Bool = false) -> NutritionRecipe {
+            NutritionRecipe(id: id, name: id, serving: "1", macros: NutritionMacros(kcal: kcal, proteinG: p, fiberG: f),
+                            oneOff: oneOff, createdAt: 0, updatedAt: 0)
+        }
+        let picks = NutritionView.topUps([r("chocolate", 150, 2, 2), r("brownie", 133, 11.3, 4), r("nuts", 145, 5, 2),
+                                          r("burger", 600, 40, 5), r("samosa", 140, 3, 2, oneOff: true)], spare: 200)
+        XCTAssertEqual(picks.map(\.id), ["brownie", "nuts", "chocolate"])
+    }
+}

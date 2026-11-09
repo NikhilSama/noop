@@ -165,3 +165,68 @@ extension Repository {
         return summary
     }
 }
+
+// MARK: - Editing a day
+
+extension Repository {
+    /// Change a day's rows. The first edit copies the resolved rows (keeping the standard slot ids, so a
+    /// swapped row still counts as standard) and gives the day its own list; later edits replace it.
+    /// Recipes added or swapped in are marked used, and a one-off used again becomes a regular recipe;
+    /// `justCreated` names a one-off made for this edit, which stays a one-off.
+    func editNutritionDay(_ key: String, justCreated: Set<String> = [], _ change: (inout [NutritionItem]) -> Void) async {
+        guard let store = await nutritionStore() else { return }
+        let current = await nutritionDay(key)
+        var items = current.state == .untracked || current.state == .none ? [] : current.items
+        let before = Set(items.map { "\($0.id)|\($0.recipeId)" })
+        change(&items)
+        let now = Int(Date().timeIntervalSince1970)
+        try? await store.saveNutritionDay(key, items: items, at: now)
+        let newlyUsed = items.filter { !before.contains("\($0.id)|\($0.recipeId)") }.map(\.recipeId)
+        // Picking a recipe for a new row is using it again, except for a one-off made for this very row.
+        let reused = newlyUsed.filter { !justCreated.contains($0) }
+        try? await store.touchNutritionRecipes(ids: reused, at: now, promoteOneOffs: true)
+        try? await store.touchNutritionRecipes(ids: newlyUsed.filter { justCreated.contains($0) }, at: now,
+                                               promoteOneOffs: false)
+        await NutritionChanges.shared.bump()
+    }
+
+    func setNutritionDayUntracked(_ key: String, _ untracked: Bool) async {
+        guard let store = await nutritionStore() else { return }
+        try? await store.setNutritionDayUntracked(key, untracked, at: Int(Date().timeIntervalSince1970))
+        await NutritionChanges.shared.bump()
+    }
+
+    /// Lock a day as final (journal finished, or the following day ended with it unfilled).
+    func lockNutritionDay(_ key: String) async {
+        guard let store = await nutritionStore() else { return }
+        try? await store.lockNutritionDay(key, at: Int(Date().timeIntervalSince1970))
+        await NutritionChanges.shared.bump()
+    }
+
+    /// Save a recipe (new, edited, or estimated) and signal the change.
+    func saveNutritionRecipe(_ recipe: NutritionRecipe) async {
+        guard let store = await nutritionStore() else { return }
+        try? await store.upsertNutritionRecipes([recipe])
+        await NutritionChanges.shared.bump()
+    }
+
+    func nutritionRecipeList() async -> [String: NutritionRecipe] {
+        guard let store = await nutritionStore() else { return [:] }
+        return (try? await store.nutritionRecipes()) ?? [:]
+    }
+
+    /// Save the standard day as a new version from today. Today follows it unless already edited.
+    func saveNutritionStandard(_ slots: [NutritionItem]) async {
+        guard let store = await nutritionStore() else { return }
+        try? await store.saveNutritionStandard(slots: slots, effectiveDay: Repository.localDayKey(Date()),
+                                               createdAt: Int(Date().timeIntervalSince1970))
+        await NutritionChanges.shared.bump()
+    }
+
+    /// The standard slots in force on `key` (empty before the first version).
+    func nutritionStandardSlots(on key: String) async -> [NutritionItem] {
+        guard let store = await nutritionStore() else { return [] }
+        let versions = (try? await store.nutritionStandardVersions()) ?? []
+        return NutritionResolve.standardSlots(on: key, versions: versions) ?? []
+    }
+}
