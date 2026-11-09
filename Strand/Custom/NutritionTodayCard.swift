@@ -29,20 +29,23 @@ struct NutritionTodayCard: View {
     }
 
     var body: some View {
-        Group {
-            if enabled, let snapshot {
-                if linksToScreen {
-                    NavigationLink { NutritionView() } label: {
+        // The load runs on a view that exists as soon as Nutrition is on: on an empty Group the task would
+        // never run, and the card would wait forever for the load that makes it appear. Off, nothing renders.
+        if enabled {
+            ZStack {
+                Color.clear.frame(height: 0)
+                if let snapshot {
+                    if linksToScreen {
+                        NavigationLink { NutritionView() } label: {
+                            NoopCard(tint: StrandPalette.metricAmber) { content(snapshot) }
+                        }
+                        .buttonStyle(.plain)
+                    } else {
                         NoopCard(tint: StrandPalette.metricAmber) { content(snapshot) }
                     }
-                    .buttonStyle(.plain)
-                } else {
-                    NoopCard(tint: StrandPalette.metricAmber) { content(snapshot) }
                 }
             }
-        }
-        .task(id: "\(repo.refreshSeq)-\(changes.seq)-\(enabled)") {
-            snapshot = enabled ? await Self.load(repo) : nil
+            .task(id: "\(repo.refreshSeq)-\(changes.seq)") { snapshot = await Self.load(repo) }
         }
     }
 
