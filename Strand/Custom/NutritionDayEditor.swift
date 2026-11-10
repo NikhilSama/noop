@@ -97,7 +97,7 @@ struct NutritionDayEditor: View {
                     Label("Swap", systemImage: "arrow.left.arrow.right")
                 }
                 Menu {
-                    ForEach([0.5, 1, 1.5, 2, 3], id: \.self) { p in
+                    ForEach(Self.portions, id: \.self) { p in
                         Button(Self.portionLabel(p)) { Task { await edit { rows in Self.setPortion(&rows, item.id, p) } } }
                     }
                 } label: { Label("Portion", systemImage: "slider.horizontal.3") }
@@ -135,13 +135,14 @@ struct NutritionDayEditor: View {
 
     static func portionPrefix(_ p: Double) -> String { p == 1 ? "" : portionLabel(p) + " " }
 
+    /// The Portion menu's choices.
+    static let portions: [Double] = [0.25, 1.0 / 3, 0.5, 1, 1.5, 2, 3]
+
+    /// "¼", "⅓", "½", "1½", "2×"; the vault reads the same glyphs back.
     static func portionLabel(_ p: Double) -> String {
-        switch p {
-        case 0.5: return "½"
-        case 1.5: return "1½"
-        case 0.25: return "¼"
-        default: return p == p.rounded() ? "\(Int(p))×" : String(format: "%.2g×", p)
-        }
+        let glyphs: [(Double, String)] = [(0.25, "¼"), (1.0 / 3, "⅓"), (0.5, "½"), (2.0 / 3, "⅔"), (0.75, "¾"), (1.5, "1½")]
+        if let g = glyphs.first(where: { abs($0.0 - p) < 0.001 }) { return g.1 }
+        return p == p.rounded() ? "\(Int(p))×" : String(format: "%.2g×", p)
     }
 
     static func setPortion(_ rows: inout [NutritionItem], _ id: String, _ portion: Double) {

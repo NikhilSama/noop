@@ -141,3 +141,12 @@ final class CustomNutritionEquationTests: XCTestCase {
         XCTAssertTrue(due((snap(20), t0), snap(20, day: "2026-11-11"), t0))
     }
 }
+
+// nikhil/custom — the Portion menu's labels.
+final class CustomNutritionPortionTests: XCTestCase {
+    func testLabels() {
+        XCTAssertEqual(NutritionDayEditor.portions.map(NutritionDayEditor.portionLabel), ["¼", "⅓", "½", "1×", "1½", "2×", "3×"])
+        XCTAssertEqual(NutritionDayEditor.portionPrefix(1), "")
+        XCTAssertEqual(NutritionDayEditor.portionPrefix(1.0 / 3), "⅓ ")
+    }
+}
