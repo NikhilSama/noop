@@ -63,6 +63,8 @@
 	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>XYLO connects directly to your WHOOP strap over Bluetooth to read heart rate, R-R intervals, battery, and sensor data locally on your iPhone. Nothing leaves your device.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>XYLO uses the camera to photograph a meal or a nutrition label so the coach can estimate its calories and macros. The photo goes only to your coach provider with your key and is not saved to your library.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>XYLO reads your own Apple Health data on-device to compute recovery, strain, and sleep. Nothing leaves your device.</string>
 	<key>NSHealthUpdateUsageDescription</key>
