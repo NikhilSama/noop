@@ -28,6 +28,8 @@ struct NutritionEstimateSheet: View {
     @State private var working = false
     @State private var error: String?
     @State private var editingPart: Int?
+    /// The camera is up (iOS: photos are taken, not picked from the library).
+    @State private var shooting = false
 
     var body: some View {
         NavigationStack {
@@ -72,6 +74,15 @@ struct NutritionEstimateSheet: View {
             }
         }
         .onChangeCompat(of: photoItems) { items in Task { await loadPhotos(items) } }
+        #if os(iOS)
+        .fullScreenCover(isPresented: $shooting) {
+            NutritionCamera { data in
+                shooting = false
+                if let data, let jpeg = Self.downscaledJPEG(data) { photos.append(jpeg) }
+            }
+            .ignoresSafeArea()
+        }
+        #endif
     }
 
     private struct PartRef: Identifiable { let index: Int; var id: Int { index } }
@@ -80,7 +91,7 @@ struct NutritionEstimateSheet: View {
 
     private var inputSection: some View {
         VStack(alignment: .leading, spacing: NoopMetrics.space3) {
-            Text("Describe it, paste a recipe, or add photos of the plate or the nutrition label.")
+            Text("Describe it, paste a recipe, or take photos of the plate or the nutrition label.")
                 .font(StrandFont.subhead).foregroundStyle(StrandPalette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             TextEditor(text: $text)
@@ -89,11 +100,25 @@ struct NutritionEstimateSheet: View {
                 .padding(6)
                 .background(NoopPanelSurface(cornerRadius: 12))
             HStack(spacing: NoopMetrics.space3) {
-                PhotosPicker(selection: $photoItems, maxSelectionCount: 4, matching: .images) {
-                    Label(photos.isEmpty ? "Add photos" : "\(photos.count) photo(s)", systemImage: "photo.on.rectangle")
+                #if os(iOS)
+                // Photos come from the camera, up to four, and are never saved to the library.
+                Button { shooting = true } label: {
+                    Label(photos.isEmpty ? "Take photo" : "Take another", systemImage: "camera")
                 }
                 .buttonStyle(NoopButtonStyle(.secondary))
+                .disabled(!NutritionCamera.isAvailable || photos.count >= 4)
+                #else
+                PhotosPicker(selection: $photoItems, maxSelectionCount: 4, matching: .images) {
+                    Label(photos.isEmpty ? "Add photos" : "Change photos", systemImage: "photo.on.rectangle")
+                }
+                .buttonStyle(NoopButtonStyle(.secondary))
+                #endif
                 Spacer()
+                if !photos.isEmpty {
+                    Text("\(photos.count) photo(s)").font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+                    Button("Clear") { photos = []; photoItems = [] }
+                        .font(StrandFont.caption).buttonStyle(.plain).foregroundStyle(StrandPalette.accent)
+                }
             }
             if coach.isConfigured {
                 NoopButton(working ? "Estimating…" : "Estimate", kind: .primary, fullWidth: true) {

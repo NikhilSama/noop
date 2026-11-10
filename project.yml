@@ -310,6 +310,7 @@ targets:
         # a typed question already uses.
         NSSpeechRecognitionUsageDescription: "XYLO transcribes your question on-device so you can ask the coach out loud instead of typing. Audio never leaves your iPhone."
         NSMicrophoneUsageDescription: "XYLO uses the microphone to let you ask the coach a question by voice. The audio is transcribed on-device and never leaves your iPhone."
+        NSCameraUsageDescription: "XYLO uses the camera to photograph a meal or a nutrition label so the coach can estimate its calories and macros. The photo goes only to your coach provider with your key and is not saved to your library."
         # #187: the opt-in AI Coach's "Custom (OpenAI-compatible)" provider can point at a LOCAL LLM on
         # the LAN (Ollama / LM Studio at http://192.168.x.x:11434). ATS blocks cleartext by default;
         # NSAllowsLocalNetworking exempts loopback/.local/private-LAN hosts ONLY — public HTTPS endpoints
