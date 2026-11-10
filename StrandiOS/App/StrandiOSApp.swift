@@ -99,6 +99,7 @@ struct StrandiOSApp: App {
         // notification action wakes it), so they are wired here rather than on a view.
         HydrationSync.profileSex = { [weak model] in model?.profile.sex ?? "" }
         HydrationSync.pushToWatch = { [weak watchBridge] snap in watchBridge?.sendHydration(snap) }
+        NutritionWatchSync.pushToWatch = { [weak watchBridge] snap in watchBridge?.sendNutrition(snap) }
         WatchSessionBridge.onHydrationLog = { [weak model] ml, id in
             guard let model else { return nil }
             await model.repo.logHydration(amountMl: ml, id: id)
@@ -322,7 +323,12 @@ struct StrandiOSApp: App {
                 // foreground gate: publish only while .active (foreground-initiated reloads are budget
                 // exempt); a background bump is covered by the widget's own 15-minute timeline policy and
                 // by the .active republish on return.
+                // nikhil/custom: a food edit or a plan change moves the watch's food meter.
+                .onReceive(NutritionChanges.shared.$seq.dropFirst()) { _ in NutritionWatchSync.changed(model.repo) }
                 .onReceive(model.repo.$refreshSeq.dropFirst()) { _ in
+                    // nikhil/custom: new active energy moves the watch's food meter, in the background too
+                    // (the bridge rations its complication transfers).
+                    NutritionWatchSync.changed(model.repo)
                     guard scenePhase == .active else { return }
                     Task { await WidgetSnapshot.publish(from: model) }
                     // The watch rides the same active-only hook because the bridge now SELF-THROTTLES
@@ -405,6 +411,7 @@ struct StrandiOSApp: App {
                 if UserDefaults.standard.bool(forKey: NutritionPrefs.enabledKey) {
                     Task { await model.repo.autoLockNutritionDays() }
                 }
+                NutritionWatchSync.changed(model.repo)
                 CoachBriefScheduler.activateIfEnabled { await model.coach.generateBrief() }
                 model.drainPendingIntents(router: router)
                 // iOS starts a Lift Log banner only for an app on screen, so a banner lost while NOOP was in

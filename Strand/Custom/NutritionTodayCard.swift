@@ -6,7 +6,9 @@ import WhoopStore
 //   IN   standard day │ extras │ deficit
 //   OUT  resting (RMR) │ digestion (TEF) │ active so far
 // The deficit segment is the real gap (out − in); a tick marks the target. When in > out the gap shows as a
-// red surplus on the OUT bar instead. One line names both levers, one the Mon–Sun ledger.
+// red surplus on the OUT bar instead. The headline is in + planned deficit − out, so 0 is on plan, coloured
+// by `NutritionBand`; under the bars the same sum as an equation. One line names both levers, one the
+// Mon–Sun ledger.
 struct NutritionTodayCard: View {
     /// On Today the card opens the Nutrition screen; on that screen it doesn't link to itself.
     var linksToScreen = true
@@ -53,6 +55,7 @@ struct NutritionTodayCard: View {
 
     private func content(_ s: Snapshot) -> some View {
         let b = s.balance
+        let eq = b.equation
         // One scale for both bars: whichever side is longer, plus the deficit target when it reaches further.
         let scale = max(b.inKcal + max(0, -b.balance), b.outKcal + max(0, b.balance), b.inKcal - b.targetBalance, 1)
         return VStack(alignment: .leading, spacing: NoopMetrics.space3) {
@@ -60,26 +63,29 @@ struct NutritionTodayCard: View {
                 Image(systemName: "fork.knife").foregroundStyle(StrandPalette.metricAmber)
                 Text("Nutrition").font(StrandFont.headline).foregroundStyle(StrandPalette.textPrimary)
                 Spacer()
-                Text(Self.signed(b.balance)).font(StrandFont.headline).monospacedDigit()
-                    .foregroundStyle(b.hit ? StrandPalette.statusPositive : StrandPalette.statusWarning)
+                Text(Self.signed(Double(eq.total))).font(StrandFont.headline).monospacedDigit()
+                    .foregroundStyle(NutritionBand.of(offPlan: Double(eq.total), target: b.targetBalance).color)
             }
             if !s.hasStandard {
                 Text("Import your vault file in Settings → Features to set up your standard day.")
                     .font(StrandFont.caption).foregroundStyle(StrandPalette.textTertiary)
             }
+            // IN is green / yellow / grey and OUT blues and cyan, so no colour means two things.
             bar(label: "In", scale: scale, segments: [
-                (b.standardKcal, StrandPalette.accent),
+                (b.standardKcal, StrandPalette.statusPositive),
                 (b.extraKcal, StrandPalette.metricAmber),
-                (max(0, -b.balance), b.hit ? StrandPalette.statusPositive : StrandPalette.statusWarning),
+                (max(0, -b.balance), StrandPalette.textTertiary.opacity(0.55)),
             ], ticks: [(b.inKcal - b.targetBalance, StrandPalette.textPrimary)]
                + (b.fullStandardKcal > b.standardKcal + 1 ? [(b.fullStandardKcal, StrandPalette.textTertiary)] : []))
             bar(label: "Out", scale: scale, segments: [
                 (b.rmrKcal, StrandPalette.metricPurple),
-                (b.tefKcal, StrandPalette.metricCyan),
-                (b.activeKcal, StrandPalette.statusPositive),
+                (b.tefKcal, StrandPalette.xyloBlueBright),
+                (b.activeKcal, StrandPalette.metricCyan),
                 (max(0, b.balance), StrandPalette.statusCritical),
             ], ticks: [])
-            legend(b)
+            Text(Self.equationText(eq))
+                .font(StrandFont.caption).monospacedDigit().foregroundStyle(StrandPalette.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
             Text(lever(s)).font(StrandFont.subhead).foregroundStyle(StrandPalette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             Text("Week: \(Self.signed(s.weekBalance)) of \(Self.signed(s.weekTarget))")
@@ -114,10 +120,11 @@ struct NutritionTodayCard: View {
         }
     }
 
-    private func legend(_ b: NutritionBalance) -> some View {
-        Text("In \(Int(b.inKcal.rounded())) · Out \(Int(b.outKcal.rounded())) (resting \(Int(b.rmrKcal)), digestion \(Int(b.tefKcal.rounded())), active \(Int(b.activeKcal.rounded())))")
-            .font(StrandFont.caption).monospacedDigit().foregroundStyle(StrandPalette.textTertiary)
-            .fixedSize(horizontal: false, vertical: true)
+    /// "+15 = 1428 (1428 + 0) + 300 − 1713 (1217 + 143 + 353)": total = in (standard + extra) + planned
+    /// deficit − out (resting + digestion + active).
+    static func equationText(_ e: NutritionBalance.Equation) -> String {
+        let deficit = e.deficit >= 0 ? "+ \(e.deficit)" : "− \(-e.deficit)"
+        return "\(signed(Double(e.total))) = \(e.inKcal) (\(e.standard) + \(e.extra)) \(deficit) − \(e.outKcal) (\(e.rmr) + \(e.tef) + \(e.active))"
     }
 
     private func lever(_ s: Snapshot) -> String {

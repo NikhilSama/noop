@@ -9,5 +9,6 @@ struct NOOPWatchComplicationBundle: WidgetBundle {
     var body: some Widget {
         NOOPChargeComplication()
         NOOPWaterComplication()
+        NOOPNutritionComplication()
     }
 }

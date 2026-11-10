@@ -51,6 +51,22 @@ struct NutritionBalance: Equatable {
     /// How far past the target; 0 until hit.
     var spare: Double { max(0, targetBalance - balance) }
 
+    /// The card's equation in whole kcal, each part rounded first so it adds up exactly as printed:
+    /// total = in (standard + extra) + planned deficit − out (resting + digestion + active).
+    struct Equation: Equatable {
+        var standard, extra, deficit, rmr, tef, active: Int
+        var inKcal: Int { standard + extra }
+        var outKcal: Int { rmr + tef + active }
+        /// 0 is exactly on plan; positive is over it.
+        var total: Int { inKcal + deficit - outKcal }
+    }
+
+    var equation: Equation {
+        func r(_ v: Double) -> Int { Int(v.rounded()) }
+        return Equation(standard: r(standardKcal), extra: r(extraKcal), deficit: r(-targetBalance),
+                        rmr: r(rmrKcal), tef: r(tefKcal), active: r(activeKcal))
+    }
+
     /// Build a day's balance. `standardSlotIds` are the ids of the standard day in force (the day's own
     /// rows keep those ids when it is edited, so a swapped row still counts as standard).
     static func make(day: NutritionDay, standardSlots: [NutritionItem], recipes: [String: NutritionRecipe],

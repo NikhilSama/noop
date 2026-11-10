@@ -223,6 +223,7 @@ final class WatchSessionBridge: NSObject, ObservableObject {
             var context: [String: Any] = [Self.contextKey: data]
             // nikhil/custom: the context is replaced wholesale, so it always carries the water state too.
             if let h = lastHydration?.encoded() { context[WatchHydrationSnapshot.contextKey] = h }
+            if let n = lastNutrition?.encoded() { context[WatchNutritionSnapshot.contextKey] = n }
             try session.updateApplicationContext(context)
         } catch {
             // A failed context update is non-fatal: the app-group mirror above still carries the latest
@@ -246,6 +247,7 @@ final class WatchSessionBridge: NSObject, ObservableObject {
               let data = snap.encoded() else { return }
         var context: [String: Any] = [WatchHydrationSnapshot.contextKey: data]
         if let scores = lastSent.flatMap({ try? JSONEncoder().encode($0) }) { context[Self.contextKey] = scores }
+        if let n = lastNutrition?.encoded() { context[WatchNutritionSnapshot.contextKey] = n }
         try? session.updateApplicationContext(context)
         if session.isReachable {
             session.sendMessage([WatchHydrationSnapshot.contextKey: data], replyHandler: nil, errorHandler: nil)
@@ -253,6 +255,34 @@ final class WatchSessionBridge: NSObject, ObservableObject {
         if session.isComplicationEnabled, session.remainingComplicationUserInfoTransfers > 0 {
             session.transferCurrentComplicationUserInfo([WatchHydrationSnapshot.contextKey: data])
         }
+    }
+
+    // MARK: - Nutrition (nikhil/custom)
+
+    /// The last food balance sent, kept so the other pushes (which replace the whole context) carry it.
+    private var lastNutrition: WatchNutritionSnapshot?
+    /// The last balance that went as a complication transfer, and when.
+    private var lastNutritionTransfer: (snap: WatchNutritionSnapshot, at: Date)?
+
+    /// Send today's food balance to the watch. The context always gets it; a complication transfer (the
+    /// ~50/day budget it shares with the water and the scores) only when the colour band or the day changes,
+    /// or it has moved 40+ kcal and 30 minutes have passed since the last one.
+    func sendNutrition(_ snap: WatchNutritionSnapshot, now: Date = Date()) {
+        let unchanged = lastNutrition.map { var a = $0; a.asOf = snap.asOf; return a == snap } ?? false
+        lastNutrition = snap
+        guard !unchanged, let session, session.activationState == .activated,
+              let data = snap.encoded() else { return }
+        var context: [String: Any] = [WatchNutritionSnapshot.contextKey: data]
+        if let scores = lastSent.flatMap({ try? JSONEncoder().encode($0) }) { context[Self.contextKey] = scores }
+        if let h = lastHydration?.encoded() { context[WatchHydrationSnapshot.contextKey] = h }
+        try? session.updateApplicationContext(context)
+        if session.isReachable {
+            session.sendMessage([WatchNutritionSnapshot.contextKey: data], replyHandler: nil, errorHandler: nil)
+        }
+        guard WatchNutritionSnapshot.transferDue(last: lastNutritionTransfer, next: snap, now: now),
+              session.isComplicationEnabled, session.remainingComplicationUserInfoTransfers > 0 else { return }
+        session.transferCurrentComplicationUserInfo([WatchNutritionSnapshot.contextKey: data])
+        lastNutritionTransfer = (snap, now)
     }
 
     /// Set by the iOS app: log `ml` under the watch's entry id / remove that entry, returning the new state.

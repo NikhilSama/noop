@@ -1,5 +1,6 @@
 import XCTest
 import WhoopStore
+import StrandDesign
 @testable import Strand
 
 /// nikhil/custom — the Today nutrition card's in/out arithmetic.
@@ -97,5 +98,46 @@ final class CustomNutritionDayKeyTests: XCTestCase {
         XCTAssertEqual(Repository.dayKeys(from: "2026-10-30", to: "2026-11-02"),
                        ["2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02"])
         XCTAssertEqual(Repository.dayKeys(from: "2026-11-02", to: "2026-11-01"), [])
+    }
+}
+
+// nikhil/custom — the card's headline / equation and the colour bands it shares with the watch.
+final class CustomNutritionEquationTests: XCTestCase {
+    func testEquationIncludesPlannedDeficitAndAddsUpAsPrinted() {
+        let b = NutritionBalance(standardKcal: 1428.4, extraKcal: 0, fullStandardKcal: 1428.4, rmrKcal: 1217,
+                                 tefKcal: 142.84, activeKcal: 353.6, targetBalance: -300)
+        let e = b.equation
+        XCTAssertEqual(e.total, 1428 + 300 - (1217 + 143 + 354))
+        XCTAssertEqual(NutritionTodayCard.equationText(e), "+14 = 1428 (1428 + 0) + 300 − 1714 (1217 + 143 + 354)")
+        // A surplus target subtracts.
+        var s = b; s.targetBalance = 200
+        XCTAssertTrue(NutritionTodayCard.equationText(s.equation).contains(") − 200 − "))
+    }
+
+    func testBands() {
+        XCTAssertEqual(NutritionBand.of(offPlan: 90, target: -300), .onPlan)
+        XCTAssertEqual(NutritionBand.of(offPlan: -100, target: -300), .onPlan)
+        XCTAssertEqual(NutritionBand.of(offPlan: 250, target: -300), .near)   // still a deficit, not the plan
+        XCTAssertEqual(NutritionBand.of(offPlan: 301, target: -300), .off)    // a real surplus
+        XCTAssertEqual(NutritionBand.of(offPlan: -450, target: -300), .off)   // eating far too little
+        XCTAssertEqual(NutritionBand.of(offPlan: 150, target: 0), .off)       // no yellow without a deficit
+        XCTAssertEqual(NutritionBand.of(offPlan: 700, target: -800), .near)
+    }
+
+    func testWatchTransferRationing() {
+        let t0 = Date(timeIntervalSince1970: 1_000_000)
+        func snap(_ n: Int, day: String = "2026-11-10") -> WatchNutritionSnapshot {
+            WatchNutritionSnapshot(day: day, offPlanKcal: n, targetKcal: -300, inKcal: 0, outKcal: 0, asOf: t0)
+        }
+        let due = WatchNutritionSnapshot.transferDue
+        XCTAssertTrue(due(nil, snap(20), t0))
+        // Same band, small move: not worth one, however late.
+        XCTAssertFalse(due((snap(20), t0), snap(55), t0.addingTimeInterval(3600)))
+        // Band change (green to yellow): at once.
+        XCTAssertTrue(due((snap(20), t0), snap(150), t0.addingTimeInterval(60)))
+        // Same band, big move: only after 30 minutes.
+        XCTAssertFalse(due((snap(150), t0), snap(200), t0.addingTimeInterval(600)))
+        XCTAssertTrue(due((snap(150), t0), snap(200), t0.addingTimeInterval(1900)))
+        XCTAssertTrue(due((snap(20), t0), snap(20, day: "2026-11-11"), t0))
     }
 }
