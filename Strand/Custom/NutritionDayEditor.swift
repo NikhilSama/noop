@@ -19,6 +19,8 @@ struct NutritionDayEditor: View {
     @State private var loaded = false
     /// The recipe opened by tapping a row.
     @State private var openRecipe: NutritionRecipe?
+    /// "Didn't track" waits for a yes: it clears the day's rows.
+    @State private var confirmingUntrack = false
 
     /// What the recipe picker is choosing for.
     struct Picking: Identifiable {
@@ -51,14 +53,18 @@ struct NutritionDayEditor: View {
                 Spacer()
                 if case .day = mode {
                     Button(state == .untracked ? "Track this day" : "Didn't track") {
-                        Task {
-                            await repo.setNutritionDayUntracked(dayKey, state != .untracked)
-                            await reload()
-                        }
+                        if state == .untracked { setUntracked(false) } else { confirmingUntrack = true }
                     }
                     .font(StrandFont.caption)
                     .foregroundStyle(StrandPalette.textTertiary)
                     .buttonStyle(.plain)
+                    .confirmationDialog("Mark this day as not tracked?", isPresented: $confirmingUntrack,
+                                        titleVisibility: .visible) {
+                        Button("Didn't track", role: .destructive) { setUntracked(true) }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This removes the day's food, including anything you added, and counts the day as no data.")
+                    }
                 }
             }
             .padding(.top, NoopMetrics.space2)
@@ -150,6 +156,13 @@ struct NutritionDayEditor: View {
     }
 
     // MARK: Changes
+
+    private func setUntracked(_ untracked: Bool) {
+        Task {
+            await repo.setNutritionDayUntracked(dayKey, untracked)
+            await reload()
+        }
+    }
 
     private func apply(_ p: Picking, recipeId: String, justCreated: Bool) async {
         let created: Set<String> = justCreated ? [recipeId] : []
