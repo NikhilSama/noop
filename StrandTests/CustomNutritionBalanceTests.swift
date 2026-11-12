@@ -150,3 +150,91 @@ final class CustomNutritionPortionTests: XCTestCase {
         XCTAssertEqual(NutritionDayEditor.portionPrefix(1.0 / 3), "⅓ ")
     }
 }
+
+/// nikhil/custom — the macro rings' bands and the "What should I eat?" request and reply.
+final class CustomNutritionMacroTests: XCTestCase {
+    private let recipes: [String: NutritionRecipe] = [
+        "chicken": NutritionRecipe(id: "chicken", name: "Grilled chicken", serving: "150 g",
+                                   macros: NutritionMacros(kcal: 240, proteinG: 45, fatG: 5, satFatG: 1.5),
+                                   createdAt: 0, updatedAt: 0, lastUsedTs: 10),
+        "choc": NutritionRecipe(id: "choc", name: "Dark chocolate 85%", serving: "20 g",
+                                macros: NutritionMacros(kcal: 120, proteinG: 2, carbsG: 4, fiberG: 2, sugarG: 3, fatG: 10, satFatG: 6),
+                                createdAt: 0, updatedAt: 0, lastUsedTs: 20),
+        "old": NutritionRecipe(id: "old", name: "Archived thing", serving: "1", macros: NutritionMacros(kcal: 99),
+                               archived: true, createdAt: 0, updatedAt: 0),
+    ]
+
+    func testTotalsScaleByPortionAndUnsaturatedIsFatLessSaturated() {
+        let items = [NutritionItem(label: "Dinner", minuteOfDay: 1200, recipeId: "chicken", portion: 2),
+                     NutritionItem(label: "Treat", minuteOfDay: 1300, recipeId: "choc", portion: 0.5),
+                     NutritionItem(label: "Gone", minuteOfDay: nil, recipeId: "missing")]
+        let t = NutritionMacro.totals(items, recipes: recipes)
+        XCTAssertEqual(t.kcal, 540, accuracy: 0.001)
+        XCTAssertEqual(NutritionMacro.protein.grams(t), 91, accuracy: 0.001)
+        XCTAssertEqual(NutritionMacro.satFat.grams(t), 6, accuracy: 0.001)
+        XCTAssertEqual(NutritionMacro.unsatFat.grams(t), 15 - 6, accuracy: 0.001)
+    }
+
+    func testFloorsCapsAndAimsBand() {
+        XCTAssertEqual(NutritionMacro.protein.status(139, target: 140), .short)
+        XCTAssertEqual(NutritionMacro.protein.status(140, target: 140), .good)
+        XCTAssertEqual(NutritionMacro.satFat.status(11, target: 13), .good)
+        XCTAssertEqual(NutritionMacro.satFat.status(11.1, target: 13), .near)
+        XCTAssertEqual(NutritionMacro.satFat.status(13.1, target: 13), .over)
+        XCTAssertEqual(NutritionMacro.carbs.status(100, target: 140), .short)
+        XCTAssertEqual(NutritionMacro.carbs.status(150, target: 140), .good)
+        XCTAssertEqual(NutritionMacro.carbs.status(175, target: 140), .near)
+        XCTAssertEqual(NutritionMacro.carbs.status(190, target: 140), .over)
+    }
+
+    func testDefaultsAreTheVaultsTargets() {
+        XCTAssertEqual(NutritionMacro.protein.defaultGrams, 140)
+        XCTAssertEqual(NutritionMacro.satFat.defaultGrams, 13)
+        XCTAssertEqual(NutritionMacro.allCases.map(\.kind), [.floor, .floor, .aim, .cap, .floor, .cap])
+    }
+
+    func testPromptCarriesGapsEatenFoodNoteAndOnlyTheActiveLibrary() {
+        let items = [NutritionItem(label: "Lunch", minuteOfDay: 780, recipeId: "chicken")]
+        var targets: [NutritionMacro: Int] = [:]
+        for m in NutritionMacro.allCases { targets[m] = m.defaultGrams }
+        let c = NutritionAdvisor.Context(now: Date(timeIntervalSince1970: 1_800_000_000), kcalLeft: 300, inKcal: 1400,
+                                         outKcal: 2000, totals: NutritionMacro.totals(items, recipes: recipes),
+                                         targets: targets, eaten: items, recipes: recipes, note: "craving sweet")
+        let p = NutritionAdvisor.prompt(c)
+        XCTAssertTrue(p.contains("kcal left to land on plan: 300"))
+        XCTAssertTrue(p.contains("- protein: 45 g, min 140 (95 g to go)"))
+        XCTAssertTrue(p.contains("- satFat: 1.5 g, max 13 (12 g left)"))
+        XCTAssertTrue(p.contains("- 1× Grilled chicken (240 kcal)"))
+        XCTAssertTrue(p.contains("Note from the user: craving sweet"))
+        XCTAssertTrue(p.contains("choc | Dark chocolate 85% | 20 g | 120 2.0 4.0 2.0 3.0 10 6.0"))
+        XCTAssertFalse(p.contains("Archived thing"))
+        // Most recently used first.
+        XCTAssertLessThan(p.range(of: "choc |")!.lowerBound, p.range(of: "chicken |")!.lowerBound)
+    }
+
+    func testReplyTakesLibraryNumbersSnapsPortionsAndDropsUnknownIds() {
+        let reply = """
+        Here you go:
+        ```json
+        {"summary": "Protein is done; 300 kcal left.",
+         "suggestions": [
+          {"recipeId": "choc", "name": "chocolate", "portion": 0.4, "kcal": 999, "proteinG": 99, "why": "sweet, fits"},
+          {"recipeId": "nope", "name": "Oats with milk", "portion": 1, "kcal": 250, "proteinG": 10, "why": "complex carbs"},
+          {"recipeId": null, "name": "", "kcal": 1}
+         ]}
+        ```
+        """
+        let a = NutritionAdvisor.parse(reply, recipes: recipes)
+        XCTAssertEqual(a?.summary, "Protein is done; 300 kcal left.")
+        XCTAssertEqual(a?.suggestions.count, 2)
+        let choc = a?.suggestions[0]
+        XCTAssertEqual(choc?.recipeId, "choc")
+        XCTAssertEqual(choc?.name, "Dark chocolate 85%")
+        XCTAssertEqual(choc?.portion ?? 0, 1.0 / 3, accuracy: 0.0001)
+        XCTAssertEqual(choc?.kcal ?? 0, 40, accuracy: 0.001)
+        let oats = a?.suggestions[1]
+        XCTAssertNil(oats?.recipeId)
+        XCTAssertEqual(oats?.kcal, 250)
+        XCTAssertNil(NutritionAdvisor.parse("no json here", recipes: recipes))
+    }
+}

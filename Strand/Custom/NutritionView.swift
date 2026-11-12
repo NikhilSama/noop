@@ -17,6 +17,7 @@ struct NutritionView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: NoopMetrics.sectionGap) {
                 NutritionTodayCard(linksToScreen: false)
+                section("Macros") { NutritionMacroRings() }
                 section("Today's food") { NutritionDayEditor(mode: .day(todayKey)) }
                 topUpSection
                 section("More") {
@@ -201,6 +202,8 @@ struct NutritionPlanSheet: View {
     @State private var target = NutritionPlan.targetBalance
     @State private var rmr = NutritionPlan.rmrKcal
     @State private var tef = NutritionPlan.tefPercent
+    @State private var macros: [NutritionMacro: Int] = Dictionary(
+        uniqueKeysWithValues: NutritionMacro.allCases.map { ($0, $0.target) })
 
     var body: some View {
         NavigationStack {
@@ -218,6 +221,21 @@ struct NutritionPlanSheet: View {
                 } footer: {
                     Text("Calories out = resting burn for the whole day + digestion + active energy so far (the average of Apple Health and the strap).")
                 }
+                Section {
+                    ForEach(NutritionMacro.allCases) { m in
+                        Stepper(value: Binding(get: { macros[m] ?? m.defaultGrams }, set: { macros[m] = $0 }),
+                                in: m.range, step: m.step) {
+                            row(LocalizedStringKey(m.title), "\(m.kindWord) \(macros[m] ?? m.defaultGrams) g")
+                        }
+                    }
+                    Button("Reset to defaults") {
+                        for m in NutritionMacro.allCases { macros[m] = m.defaultGrams }
+                    }
+                } header: {
+                    Text("Daily macros")
+                } footer: {
+                    Text("Min is a floor to reach, max a limit to stay under, aim a number to land near. Unsaturated fat is total fat less saturated.")
+                }
             }
             .navigationTitle("Targets and burn")
             .toolbar {
@@ -228,13 +246,14 @@ struct NutritionPlanSheet: View {
                         d.set(target, forKey: NutritionPlan.targetKey)
                         d.set(rmr, forKey: NutritionPlan.rmrKey)
                         d.set(tef, forKey: NutritionPlan.tefKey)
+                        for (m, v) in macros { d.set(v, forKey: m.key) }
                         NutritionChanges.shared.bump()
                         dismiss()
                     }
                 }
             }
         }
-        .frame(minWidth: 360, minHeight: 360)
+        .frame(minWidth: 360, minHeight: 520)
     }
 
     private func row(_ label: LocalizedStringKey, _ value: String) -> some View {
