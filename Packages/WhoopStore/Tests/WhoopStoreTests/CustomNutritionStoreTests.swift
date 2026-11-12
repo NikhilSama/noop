@@ -134,4 +134,39 @@ extension CustomNutritionStoreTests {
         XCTAssertEqual(today?.map(\.id), ["slot-lunch"])
         XCTAssertEqual(today?.map(\.recipeId), ["b"], "the later save on the same day wins")
     }
+
+    /// Edited days copy the standard's slot ids, so two edited days share ids. The second save used to hit
+    /// the old id-only key and roll back silently ("added food doesn't show up").
+    func testTwoEditedDaysCanShareTheStandardsRowIds() async throws {
+        let s = try await store()
+        try await s.upsertNutritionRecipes([recipe("keema", kcal: 345), recipe("nuts", kcal: 145)])
+        let standard = [slot("keema")]
+        try await s.saveNutritionStandard(slots: standard, effectiveDay: "2026-11-01", createdAt: 10)
+        try await s.saveNutritionDay("2026-11-10", items: standard + [slot("nuts")], at: 100)
+        try await s.saveNutritionDay("2026-11-12", items: standard + [slot("nuts")], at: 200)
+        let stored = try await s.nutritionStoredDays(from: "2026-11-10", to: "2026-11-12")
+        XCTAssertEqual(stored["2026-11-10"]?.items.count, 2)
+        XCTAssertEqual(stored["2026-11-12"]?.items.count, 2)
+    }
+
+    /// A table made by the first version (keyed on id alone) is rebuilt with its rows kept.
+    func testOldDayItemTableIsRekeyedKeepingRows() async throws {
+        let s = try await WhoopStore.inMemory()
+        try await s.syncWrite { db in
+            try db.execute(sql: """
+                CREATE TABLE nutritionDayItem (id TEXT PRIMARY KEY, day TEXT NOT NULL, ord INTEGER NOT NULL,
+                  label TEXT NOT NULL, minuteOfDay INTEGER, recipeId TEXT NOT NULL, portion DOUBLE NOT NULL DEFAULT 1);
+                CREATE INDEX idx_nutritionDayItem_day ON nutritionDayItem(day, ord);
+                INSERT INTO nutritionDayItem VALUES ('slot-1', '2026-11-10', 0, 'Lunch', 810, 'keema', 1);
+                """)
+        }
+        try await s.ensureNutritionSchema()
+        try await s.ensureNutritionSchema()
+        try await s.saveNutritionDay("2026-11-12", items: [NutritionItem(id: "slot-1", label: "Lunch", minuteOfDay: 810,
+                                                                         recipeId: "keema")], at: 1)
+        let stored = try await s.nutritionStoredDays(from: "2026-11-01", to: "2026-11-30")
+        XCTAssertEqual(stored["2026-11-12"]?.items.map(\.id), ["slot-1"])
+        let count = try await s.syncWrite { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM nutritionDayItem") }
+        XCTAssertEqual(count, 2, "the old row survives the rebuild")
+    }
 }

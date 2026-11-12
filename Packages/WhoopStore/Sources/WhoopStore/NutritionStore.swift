@@ -248,15 +248,20 @@ extension WhoopStore {
                 t.column("lockedAt", .integer)
                 t.column("updatedAt", .integer).notNull()
             }
+            // A day's rows keep the standard slots' ids, so the same id is on every edited day: the key is
+            // the pair. (The first version keyed on `id` alone, which made a second edited day's save fail;
+            // `rekeyNutritionDayItems` rebuilds such a table.)
             try db.create(table: "nutritionDayItem", options: [.ifNotExists]) { t in
-                t.column("id", .text).primaryKey()
+                t.column("id", .text).notNull()
                 t.column("day", .text).notNull()
                 t.column("ord", .integer).notNull()
                 t.column("label", .text).notNull()
                 t.column("minuteOfDay", .integer)
                 t.column("recipeId", .text).notNull()
                 t.column("portion", .double).notNull().defaults(to: 1)
+                t.primaryKey(["day", "id"])
             }
+            try Self.rekeyNutritionDayItems(db)
             try db.create(index: "idx_nutritionDayItem_day", on: "nutritionDayItem",
                           columns: ["day", "ord"], options: [.ifNotExists])
             try db.create(table: "nutritionMeta", options: [.ifNotExists]) { t in
@@ -264,6 +269,30 @@ extension WhoopStore {
                 t.column("value", .text)
             }
         }
+    }
+
+    /// Rebuild a `nutritionDayItem` table keyed on `id` alone as one keyed on (day, id), keeping its rows.
+    static func rekeyNutritionDayItems(_ db: Database) throws {
+        let dayInKey = try Row.fetchAll(db, sql: "PRAGMA table_info(nutritionDayItem)")
+            .contains { ($0["name"] as String?) == "day" && ($0["pk"] as Int? ?? 0) > 0 }
+        guard !dayInKey else { return }
+        try db.execute(sql: "ALTER TABLE nutritionDayItem RENAME TO nutritionDayItem_old")
+        try db.execute(sql: "DROP INDEX IF EXISTS idx_nutritionDayItem_day")
+        try db.create(table: "nutritionDayItem") { t in
+            t.column("id", .text).notNull()
+            t.column("day", .text).notNull()
+            t.column("ord", .integer).notNull()
+            t.column("label", .text).notNull()
+            t.column("minuteOfDay", .integer)
+            t.column("recipeId", .text).notNull()
+            t.column("portion", .double).notNull().defaults(to: 1)
+            t.primaryKey(["day", "id"])
+        }
+        try db.execute(sql: """
+            INSERT INTO nutritionDayItem (id, day, ord, label, minuteOfDay, recipeId, portion)
+            SELECT id, day, ord, label, minuteOfDay, recipeId, portion FROM nutritionDayItem_old
+            """)
+        try db.execute(sql: "DROP TABLE nutritionDayItem_old")
     }
 
     // MARK: Recipes
