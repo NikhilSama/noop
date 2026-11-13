@@ -145,42 +145,27 @@ struct NutritionTodayCard: View {
     // MARK: Loading
 
     static func load(_ repo: Repository) async -> Snapshot? {
-        guard let store = await repo.nutritionStore() else { return nil }
         let now = Date()
         let todayKey = Repository.localDayKey(now)
-        let cal = Calendar.current
-        // Monday-start week regardless of locale (the vault's ledger week).
-        var monday = cal.startOfDay(for: now)
-        while cal.component(.weekday, from: monday) != 2 { monday = cal.date(byAdding: .day, value: -1, to: monday) ?? monday }
-        let mondayKey = Repository.localDayKey(monday)
-
-        let recipes = (try? await store.nutritionRecipes()) ?? [:]
-        let versions = (try? await store.nutritionStandardVersions()) ?? []
-        let days = await repo.nutritionDays(from: mondayKey, to: todayKey)
-        let metrics = await repo.dailyMetrics(fromDay: mondayKey, toDay: todayKey)
-        let apple = (try? await store.appleDaily(deviceId: "apple-health", from: mondayKey, to: todayKey)) ?? []
-        let strapByDay = Dictionary(metrics.map { ($0.day, $0.activeKcalEst) }, uniquingKeysWith: { a, _ in a })
-        let appleByDay = Dictionary(apple.map { ($0.day, $0.activeKcal) }, uniquingKeysWith: { a, _ in a })
-        let elapsed = now.timeIntervalSince(cal.startOfDay(for: now)) / 86_400
-
-        var week = 0.0
-        var today: NutritionBalance?
-        var todayDay: NutritionDay?
-        for day in days where day.state == .standard || day.state == .edited {
-            let slots = NutritionResolve.standardSlots(on: day.day, versions: versions) ?? []
-            let b = NutritionBalance.make(day: day, standardSlots: slots, recipes: recipes,
-                                          appleActiveKcal: appleByDay[day.day] ?? nil,
-                                          strapDayKcal: strapByDay[day.day] ?? nil,
-                                          dayFraction: day.day == todayKey ? elapsed : 1)
-            week += b.balance
-            if day.day == todayKey { today = b; todayDay = day }
+        let mondayKey = Repository.localDayKey(NutritionHistory.monday(of: now))
+        guard let loaded = await NutritionHistory.load(repo, from: mondayKey, to: todayKey, now: now) else { return nil }
+        let week = loaded.days.reduce(0) { $0 + $1.balance.balance }
+        let today = loaded.days.first { $0.isToday }
+        let balance: NutritionBalance
+        if let today {
+            balance = today.balance
+        } else {
+            // Untracked or before the first standard: nothing in, the burn so far out.
+            guard let store = await repo.nutritionStore() else { return nil }
+            let strap = await repo.dailyMetrics(fromDay: todayKey, toDay: todayKey).first?.activeKcalEst
+            let apple = (try? await store.appleDaily(deviceId: "apple-health", from: todayKey, to: todayKey))?.first?.activeKcal
+            let elapsed = now.timeIntervalSince(Calendar.current.startOfDay(for: now)) / 86_400
+            balance = NutritionBalance.make(
+                day: NutritionDay(day: todayKey, state: .none, items: []), standardSlots: [], recipes: loaded.recipes,
+                appleActiveKcal: apple, strapDayKcal: strap, dayFraction: elapsed)
         }
-        let hasStandard = !versions.isEmpty
-        let balance = today ?? NutritionBalance.make(
-            day: NutritionDay(day: todayKey, state: .none, items: []), standardSlots: [], recipes: recipes,
-            appleActiveKcal: appleByDay[todayKey] ?? nil, strapDayKcal: strapByDay[todayKey] ?? nil, dayFraction: elapsed)
-        let trim = todayDay.flatMap { NutritionBalance.trimSuggestion(items: $0.items, recipes: recipes, need: balance.toGo) }
+        let trim = today.flatMap { NutritionBalance.trimSuggestion(items: $0.items, recipes: loaded.recipes, need: balance.toGo) }
         return Snapshot(balance: balance, trim: trim.map { ($0.name, $0.saves) }, weekBalance: week,
-                        weekTarget: Double(NutritionPlan.targetBalance) * 7, hasStandard: hasStandard)
+                        weekTarget: Double(NutritionPlan.targetBalance) * 7, hasStandard: loaded.hasStandard)
     }
 }

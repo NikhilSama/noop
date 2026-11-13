@@ -10,25 +10,25 @@ struct NutritionView: View {
     @State private var snapshot: NutritionTodayCard.Snapshot?
     @State private var topUps: [NutritionRecipe] = []
     @State private var showPlan = false
+    @State private var tab: Tab = .today
+
+    /// Today edits the day; Trends looks back over weeks and months.
+    enum Tab: String, CaseIterable, Identifiable {
+        case today, trends
+        var id: String { rawValue }
+        var label: String { self == .today ? String(localized: "Today") : String(localized: "Trends") }
+    }
 
     private var todayKey: String { Repository.localDayKey(Date()) }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: NoopMetrics.sectionGap) {
-                NutritionTodayCard(linksToScreen: false)
-                section("Macros") { NutritionMacroRings() }
-                section("Today's food") { NutritionDayEditor(mode: .day(todayKey)) }
-                topUpSection
-                section("More") {
-                    VStack(alignment: .leading, spacing: 0) {
-                        NavigationLink { NutritionStandardView() } label: { linkRow("Standard day", "calendar") }
-                        Divider()
-                        NavigationLink { NutritionRecipesView() } label: { linkRow("Recipes", "book") }
-                        Divider()
-                        Button { showPlan = true } label: { linkRow("Targets and burn", "target") }
-                    }
-                    .buttonStyle(.plain)
+                SegmentedPillControl(Tab.allCases, selection: $tab, fillsAvailableWidth: true) { $0.label }
+                if tab == .trends {
+                    NutritionTrendsView()
+                } else {
+                    todayTab
                 }
             }
             .padding(NoopMetrics.screenPadding)
@@ -37,6 +37,23 @@ struct NutritionView: View {
         .navigationTitle("Nutrition")
         .task(id: changes.seq) { await reloadTopUps() }
         .sheet(isPresented: $showPlan) { NutritionPlanSheet() }
+    }
+
+    @ViewBuilder private var todayTab: some View {
+        NutritionTodayCard(linksToScreen: false)
+        section("Macros") { NutritionMacroRings() }
+        section("Today's food") { NutritionDayEditor(mode: .day(todayKey)) }
+        topUpSection
+        section("More") {
+            VStack(alignment: .leading, spacing: 0) {
+                NavigationLink { NutritionStandardView() } label: { linkRow("Standard day", "calendar") }
+                Divider()
+                NavigationLink { NutritionRecipesView() } label: { linkRow("Recipes", "book") }
+                Divider()
+                Button { showPlan = true } label: { linkRow("Targets and burn", "target") }
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     // MARK: Evening top-up

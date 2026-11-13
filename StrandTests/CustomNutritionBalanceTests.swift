@@ -238,3 +238,37 @@ final class CustomNutritionMacroTests: XCTestCase {
         XCTAssertNil(NutritionAdvisor.parse("no json here", recipes: recipes))
     }
 }
+
+/// nikhil/custom — the Trends tab's weekly averages and on-target count.
+final class CustomNutritionTrendsTests: XCTestCase {
+    private func day(_ key: String, balance: Double, today: Bool = false) -> NutritionHistory.Day {
+        let b = NutritionBalance(standardKcal: 1500 + balance, extraKcal: 0, fullStandardKcal: 1500, rmrKcal: 1500,
+                                 tefKcal: 0, activeKcal: 0, targetBalance: -300)
+        return NutritionHistory.Day(day: key, balance: b, macros: .zero, items: [], isToday: today)
+    }
+
+    func testWeeksRunMondayToSundayAndLeaveTodayOut() {
+        // 2026-11-08 is a Sunday; 9–12 Nov are Mon–Thu, with the 12th still filling.
+        let days = [day("2026-11-08", balance: -100), day("2026-11-09", balance: -400),
+                    day("2026-11-10", balance: -200), day("2026-11-12", balance: 900, today: true)]
+        let weeks = NutritionHistory.weeks(days)
+        XCTAssertEqual(weeks.count, 2)
+        XCTAssertEqual(weeks[0].start, NutritionHistory.date("2026-11-02"))
+        XCTAssertEqual(weeks[0].averageBalance, -100, accuracy: 0.001)
+        XCTAssertEqual(weeks[1].start, NutritionHistory.date("2026-11-09"))
+        XCTAssertEqual(weeks[1].averageBalance, -300, accuracy: 0.001)
+        XCTAssertEqual(weeks[1].totalBalance, -600, accuracy: 0.001)
+        XCTAssertEqual(weeks[1].days, 2)
+    }
+
+    func testMondayOfASundayIsTheMondayBefore() {
+        XCTAssertEqual(NutritionHistory.monday(of: NutritionHistory.date("2026-11-15")!), NutritionHistory.date("2026-11-09"))
+        XCTAssertEqual(NutritionHistory.monday(of: NutritionHistory.date("2026-11-09")!), NutritionHistory.date("2026-11-09"))
+    }
+
+    func testOnTargetIsUnderOrWithinAHundredOver() {
+        XCTAssertTrue(NutritionTrendsView.onTarget(day("d", balance: -900).balance))
+        XCTAssertTrue(NutritionTrendsView.onTarget(day("d", balance: -200).balance))
+        XCTAssertFalse(NutritionTrendsView.onTarget(day("d", balance: -150).balance))
+    }
+}
