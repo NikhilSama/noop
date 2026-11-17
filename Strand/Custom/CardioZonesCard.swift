@@ -31,8 +31,8 @@ struct CardioZonesCard: View {
                     ProgressView().controlSize(.small)
                 }
                 Text(CardioZones.includeStrength
-                     ? "From all workouts. Zones from Profile; a workout's own imported split is used when it has one."
-                     : "From workouts, strength sessions left out. Zones from Profile; a workout's own imported split is used when it has one.")
+                     ? "Heart rate during every workout, in the zones set in Profile."
+                     : "Heart rate during workouts other than strength sessions, in the zones set in Profile.")
                     .font(StrandFont.caption).foregroundStyle(StrandPalette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -208,7 +208,7 @@ struct CardioZoneTargetsSheet: View {
                     Toggle("Count strength sessions", isOn: $includeStrength)
                     Button("Reset to defaults") {
                         targets = CardioZones.defaults
-                        includeStrength = false
+                        includeStrength = true
                     }
                 } footer: {
                     Text("Minutes per Monday–Sunday week. Zone edges come from Profile → heart-rate zones.")

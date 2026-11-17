@@ -4,9 +4,9 @@ import WhoopStore
 
 // nikhil/custom — minutes in each HR zone per Mon–Sun week, from workouts, against weekly targets.
 //
-// A workout's zone minutes follow the workout detail screen's order: the imported per-workout split when the
-// row has one, else the strap's HR binned into the profile's zones. Strength-type sessions are left out
-// unless the setting includes them, so "cardio" means the sessions done for the heart.
+// A workout's zone minutes are always its recorded heart rate binned into the zones set in Profile (the same
+// read the workout detail screen and the Workouts zones summary use); an imported WHOOP split is never used.
+// Every workout counts, strength sessions included, unless the setting leaves strength out.
 //
 // Each zone's target is a weekly band in minutes (low…high), or none. The defaults are Nikhil's plan in the
 // HealthVault: zone 2 about five sessions a week up to ~3 h (150–180 min), one VO2max interval session
@@ -54,7 +54,10 @@ enum CardioZones {
         for z in 1...5 { [enabledKey(z), lowKey(z), highKey(z)].forEach { d.removeObject(forKey: $0) } }
     }
 
-    static var includeStrength: Bool { UserDefaults.standard.bool(forKey: includeStrengthKey) }
+    /// On unless switched off.
+    static var includeStrength: Bool {
+        UserDefaults.standard.object(forKey: includeStrengthKey) == nil ? true : UserDefaults.standard.bool(forKey: includeStrengthKey)
+    }
 
     /// Lifting, mobility and the like: their HR says little about cardio training.
     static func isStrength(_ sport: String) -> Bool {
@@ -108,13 +111,9 @@ enum CardioZones {
 }
 
 extension Repository {
-    /// One workout's zone minutes (zones 1…5), the way the workout detail screen gets them: the imported
-    /// split when present, else the strap's HR in `zoneSet`.
+    /// One workout's zone minutes (zones 1…5): its recorded HR in `zoneSet`, the Profile zones. Nil when
+    /// the window has no HR. Imported WHOOP splits are ignored: they use WHOOP's zones, not these.
     func cardioZoneMinutes(_ row: WorkoutRow, zoneSet: HRZoneSet) async -> [Double]? {
-        if let pct = WorkoutZones.percents(row.zonesJSON) {
-            let durMin = (row.durationS ?? Double(row.endTs - row.startTs)) / 60
-            if durMin > 0 { return pct.map { durMin * $0 / 100 } }
-        }
-        return await workoutZoneMinutes(from: row.startTs, to: row.endTs, zoneSet: zoneSet, source: row.source)
+        await workoutZoneMinutes(from: row.startTs, to: row.endTs, zoneSet: zoneSet, source: row.source)
     }
 }

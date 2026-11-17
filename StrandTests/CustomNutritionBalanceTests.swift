@@ -322,6 +322,16 @@ final class CustomCardioZonesTests: XCTestCase {
         XCTAssertEqual(CardioZones.target(4, defaults: d), .init(low: 0, high: 5))
     }
 
+    func testStrengthSessionsCountUnlessSwitchedOff() {
+        let d = UserDefaults.standard
+        let saved = d.object(forKey: CardioZones.includeStrengthKey)
+        defer { saved == nil ? d.removeObject(forKey: CardioZones.includeStrengthKey) : d.set(saved, forKey: CardioZones.includeStrengthKey) }
+        d.removeObject(forKey: CardioZones.includeStrengthKey)
+        XCTAssertTrue(CardioZones.includeStrength)
+        d.set(false, forKey: CardioZones.includeStrengthKey)
+        XCTAssertFalse(CardioZones.includeStrength)
+    }
+
     func testStrengthSportsAreRecognised() {
         XCTAssertTrue(CardioZones.isStrength("Strength Training"))
         XCTAssertTrue(CardioZones.isStrength("Functional Fitness"))

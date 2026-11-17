@@ -133,22 +133,9 @@ struct WorkoutDetailView: View {
         let buckets = await repo.workoutHrBuckets(from: row.startTs, to: row.endTs, source: row.source)
         let points = buckets.map { TrendPoint(date: Date(timeIntervalSince1970: TimeInterval($0.ts)), value: $0.bpm) }
 
-        // Zones: prefer the imported per-workout percentages (a WHOOP-computed split), and only fall
-        // back to deriving zone-minutes from the strap's own raw HR when the row has none — so we
-        // never overwrite a real imported split with an on-device approximation.
-        var minutes: [Double]?
-        var fromImport = false
-        if let pct = WorkoutZones.percents(row.zonesJSON) {
-            let durMin = (row.durationS ?? Double(row.endTs - row.startTs)) / 60.0
-            if durMin > 0 {
-                minutes = pct.map { durMin * $0 / 100.0 }
-                fromImport = true
-            }
-        }
-        if minutes == nil {
-            minutes = await repo.workoutZoneMinutes(from: row.startTs, to: row.endTs, zoneSet: profile.hrZoneSet,
-                                                    source: row.source)
-        }
+        // nikhil/custom: zones always come from the recorded HR in the Profile zones, never an imported
+        // WHOOP split (WHOOP's zones, not these), so this matches Trends' cardio zones and the Workouts summary.
+        let minutes = await repo.cardioZoneMinutes(row, zoneSet: profile.hrZoneSet)
 
         let hrr = await repo.workoutHeartRateRecovery(
             from: row.startTs, to: row.endTs, maxHR: Double(profile.hrMax), source: row.source)
@@ -175,7 +162,7 @@ struct WorkoutDetailView: View {
             self.route = routePoints
             self.hrPoints = points
             self.zoneMinutes = minutes
-            self.zonesFromImport = fromImport
+            self.zonesFromImport = false
             self.heartRateRecovery = hrr
             self.steps = stepReadout
             self.loaded = true
@@ -482,7 +469,7 @@ struct WorkoutDetailView: View {
             let busiest = z.indices.max(by: { z[$0] < z[$1] }) ?? 0
             VStack(alignment: .leading, spacing: NoopMetrics.gap) {
                 SectionHeader("HR Zones",
-                              overline: zonesFromImport ? "Whoop import" : "From strap HR",
+                              overline: zonesFromImport ? "Whoop import" : "Your zones",
                               trailing: String(localized: "\(Int(total.rounded()))m in zone"))
                 NoopCard(tint: StrandPalette.effortColor) {
                     VStack(alignment: .leading, spacing: 12) {
@@ -513,7 +500,7 @@ struct WorkoutDetailView: View {
                         }
                         Text(zonesFromImport
                              ? "WHOOP's imported per-zone split for this session."
-                             : "Time in each %HRmax zone, derived from the strap's heart rate over this window (approximate).")
+                             : "Time in each of your heart-rate zones (Profile), from the heart rate recorded over this session.")
                             .font(StrandFont.footnote)
                             .foregroundStyle(StrandPalette.textTertiary)
                     }

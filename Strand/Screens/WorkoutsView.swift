@@ -114,6 +114,8 @@ struct WorkoutsView: View {
     /// workout ranges intentionally keep this trend capped at 90 days so opening a deep history never
     /// launches hundreds of raw-HR reads.
     @State private var recoveryTrend: [WorkoutRecoveryTrendPoint] = []
+    /// nikhil/custom: each window row's minutes in the Profile zones, keyed by `zoneRowKey`.
+    @State private var zoneMinutesByRow: [String: [Double]] = [:]
 
     // MARK: - Filters + selection (#64)
 
@@ -205,7 +207,7 @@ struct WorkoutsView: View {
                 // whole window.
                 let windowRows = Self.scopedRows(unscopedRows, scope: scope)
                 let groups = sportGroups(from: windowRows)
-                let zonesSummary = WorkoutZones.summary(from: windowRows)
+                let zonesSummary = zoneSummary(windowRows)
 
                 workoutActionRow
                 scopeBar
@@ -262,6 +264,9 @@ struct WorkoutsView: View {
         }
         .task(id: recoveryTrendInputKey(rows: trendRows)) {
             await loadRecoveryTrend(rows: trendRows)
+        }
+        .task(id: zoneInputKey(rows: unscopedRows)) {
+            await loadZoneMinutes(rows: unscopedRows)
         }
         .sheet(item: $sheet) { target in
             ManualWorkoutSheet(editing: target.editing) { row, replacing in
@@ -356,6 +361,44 @@ struct WorkoutsView: View {
         }
         guard !Task.isCancelled else { return }
         recoveryTrend = built
+    }
+
+    // MARK: - HR zones from your zones (nikhil/custom)
+
+    /// Stable task identity: the window's rows, a refresh, or a change to the Profile zones rebuilds them.
+    private func zoneInputKey(rows: [WorkoutRow]) -> String {
+        "\(repo.refreshSeq)|\(profile.hrZoneSet.zones.map { Int($0.lower) })|"
+            + rows.map { "\($0.startTs):\($0.endTs):\($0.source)" }.joined(separator: ",")
+    }
+
+    private static func zoneRowKey(_ r: WorkoutRow) -> String { "\(r.startTs):\(r.endTs):\(r.source)" }
+
+    /// Each window row's minutes in the Profile zones, from its recorded HR (rows without HR are left out).
+    /// Capped at the newest 300 sessions so a deep "All" history never launches thousands of raw-HR reads;
+    /// the section's "N of M sessions" says how many it covers.
+    private func loadZoneMinutes(rows: [WorkoutRow]) async {
+        guard !usesPreviewRows else { zoneMinutesByRow = [:]; return }
+        let zoneSet = profile.hrZoneSet
+        var built: [String: [Double]] = [:]
+        for row in rows.sorted(by: { $0.startTs > $1.startTs }).prefix(300) {
+            if Task.isCancelled { return }
+            if let m = await repo.cardioZoneMinutes(row, zoneSet: zoneSet) { built[Self.zoneRowKey(row)] = m }
+        }
+        guard !Task.isCancelled else { return }
+        zoneMinutesByRow = built
+    }
+
+    /// The zone split across `rows`, in the same shape the imported summary used.
+    private func zoneSummary(_ rows: [WorkoutRow]) -> WorkoutZones.Summary? {
+        var mins = [Double](repeating: 0, count: 5)
+        var n = 0
+        for r in rows {
+            guard let m = zoneMinutesByRow[Self.zoneRowKey(r)], m.count == 5 else { continue }
+            for i in 0..<5 { mins[i] += m[i] }
+            n += 1
+        }
+        guard n > 0, mins.reduce(0, +) > 0 else { return nil }
+        return WorkoutZones.Summary(minutes: mins, sessionsWithZones: n)
     }
 
     @ViewBuilder private var recoveryTrendSection: some View {
@@ -1055,7 +1098,7 @@ struct WorkoutsView: View {
             LazyVGrid(columns: breakdownColumns, alignment: .leading, spacing: NoopMetrics.gap) {
                 ForEach(groups) { g in
                     // This sport's own sessions, so the card can carry an HR-zone mini-bar.
-                    sportCard(g, zones: WorkoutZones.summary(from: rows.filter { $0.sport == g.sport }))
+                    sportCard(g, zones: zoneSummary(rows.filter { $0.sport == g.sport }))
                 }
             }
         }
@@ -1136,7 +1179,7 @@ struct WorkoutsView: View {
     private func zonesSection(_ z: WorkoutZones.Summary, totalSessions: Int) -> some View {
         VStack(alignment: .leading, spacing: NoopMetrics.gap) {
             SectionHeader("HR Zones",
-                          overline: "Whoop import",
+                          overline: "Your zones",
                           trailing: totalSessions == 1
                               ? String(localized: "\(z.sessionsWithZones) of 1 session")
                               : String(localized: "\(z.sessionsWithZones) of \(totalSessions) sessions"))
@@ -1171,7 +1214,7 @@ struct WorkoutsView: View {
                             zoneStat(i + 1, minutes: z.minutes[i], total: z.totalMinutes)
                         }
                     }
-                    Text("Share of imported zone time, duration-weighted across sessions (approximate).")
+                    Text("Share of time in your heart-rate zones (Profile), from the heart rate recorded in each session.")
                         .font(StrandFont.footnote)
                         .foregroundStyle(StrandPalette.textTertiary)
                 }
