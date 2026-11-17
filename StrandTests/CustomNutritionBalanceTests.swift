@@ -272,3 +272,60 @@ final class CustomNutritionTrendsTests: XCTestCase {
         XCTAssertFalse(NutritionTrendsView.onTarget(day("d", balance: -150).balance))
     }
 }
+
+/// nikhil/custom — the Trends cardio zones card: weekly grouping, strength filter, target bands.
+final class CustomCardioZonesTests: XCTestCase {
+    private func row(_ day: String, hour: Int = 8, sport: String) -> WorkoutRow {
+        let start = Int(NutritionHistory.date(day)!.timeIntervalSince1970) + hour * 3600
+        return WorkoutRow(startTs: start, endTs: start + 1800, sport: sport, source: "test", durationS: 1800,
+                          energyKcal: nil, avgHr: nil, maxHr: nil, strain: nil, distanceM: nil, zonesJSON: nil, notes: nil, steps: nil)
+    }
+
+    func testWeeksGroupMondayToSundayAndSkipStrength() async {
+        let now = NutritionHistory.date("2026-11-17")!.addingTimeInterval(20 * 3600)   // Tue evening
+        let rows = [row("2026-11-16", sport: "Walking"), row("2026-11-17", sport: "Elliptical"),
+                    row("2026-11-15", sport: "Walking"), row("2026-11-16", hour: 18, sport: "Strength Training"),
+                    row("2026-10-01", sport: "Walking")]
+        let weeks = await CardioZones.weeks(rows, count: 3, now: now, includeStrength: false) { _ in [1, 30, 2, 0, 0] }
+        XCTAssertEqual(weeks.map(\.start), ["2026-11-02", "2026-11-09", "2026-11-16"].map { NutritionHistory.date($0)! })
+        XCTAssertEqual(weeks[2].sessions, 2)
+        XCTAssertEqual(weeks[2].minutes, [2, 60, 4, 0, 0])
+        XCTAssertEqual(weeks[1].sessions, 1)   // Sunday the 15th closes the week of the 9th
+        XCTAssertEqual(weeks[0].sessions, 0)
+        let withStrength = await CardioZones.weeks(rows, count: 3, now: now, includeStrength: true) { _ in [0, 10, 0, 0, 0] }
+        XCTAssertEqual(withStrength[2].sessions, 3)
+    }
+
+    func testStatusBands() {
+        let z2 = CardioZones.Target(low: 150, high: 180)
+        XCTAssertEqual(CardioZones.status(120, z2), .short)
+        XCTAssertEqual(CardioZones.status(160, z2), .good)
+        XCTAssertEqual(CardioZones.status(220, z2), .near)
+        XCTAssertEqual(CardioZones.status(240, z2), .over)
+        let z5 = CardioZones.Target(low: 0, high: 0)
+        XCTAssertEqual(CardioZones.status(0, z5), .good)
+        XCTAssertEqual(CardioZones.status(4, z5), .near)
+        XCTAssertEqual(CardioZones.status(8, z5), .over)
+        XCTAssertEqual(CardioZones.status(30, nil), .none)
+    }
+
+    func testTargetsDefaultSaveAndReset() {
+        let d = UserDefaults(suiteName: "cardio-zone-test")!
+        d.removePersistentDomain(forName: "cardio-zone-test")
+        XCTAssertNil(CardioZones.target(1, defaults: d))
+        XCTAssertEqual(CardioZones.target(2, defaults: d), .init(low: 150, high: 180))
+        CardioZones.save(2, .init(low: 100, high: 90), defaults: d)
+        XCTAssertEqual(CardioZones.target(2, defaults: d), .init(low: 100, high: 100))
+        CardioZones.save(4, nil, defaults: d)
+        XCTAssertNil(CardioZones.target(4, defaults: d))
+        CardioZones.resetTargets(defaults: d)
+        XCTAssertEqual(CardioZones.target(4, defaults: d), .init(low: 0, high: 5))
+    }
+
+    func testStrengthSportsAreRecognised() {
+        XCTAssertTrue(CardioZones.isStrength("Strength Training"))
+        XCTAssertTrue(CardioZones.isStrength("Functional Fitness"))
+        XCTAssertFalse(CardioZones.isStrength("Walking"))
+        XCTAssertFalse(CardioZones.isStrength("Elliptical"))
+    }
+}

@@ -326,6 +326,9 @@ struct TrendsView: View {
                         // chart behind an honest "needs N more days" state until enough history exists.
                         TrainingLoadCard(days: repo.days)
                             .staggeredAppear(index: 5)
+                        // nikhil/custom — weekly minutes per HR zone from workouts, against targets.
+                        CardioZonesCard(weekCount: min(max((range.days ?? 364) / 7, 4), 52))
+                            .staggeredAppear(index: 5)
                         yearStrip
                             .staggeredAppear(index: 6)
                         exportReportRow
