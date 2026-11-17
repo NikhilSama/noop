@@ -90,17 +90,65 @@ enum SleepStageTrend {
 }
 
 /// The stacked bars. `weekly` labels each bar by its window's first day instead of drawing it on a day axis.
+/// The legend's chips toggle stages: tap Light, REM and Unstaged off to see deep sleep alone, tap them back
+/// on for the stack. The last stage showing can't be switched off.
 struct SleepStagesChart: View {
     let bars: [SleepStageTrend.Bar]
     var weekly = false
     var height: CGFloat = NoopMetrics.chartHeight
+    @State private var hidden: Set<SleepStageTrend.Stage> = []
 
     var body: some View {
         let stages = SleepStageTrend.Stage.allCases.filter { s in bars.contains { s.hours($0) > 0 } }
+        let shown = stages.filter { !hidden.contains($0) }
+        VStack(spacing: 6) {
+            chart(stages: stages, shown: shown)
+                .frame(maxHeight: .infinity)
+            legend(stages)
+        }
+        .frame(height: height)
+    }
+
+    private func legend(_ stages: [SleepStageTrend.Stage]) -> some View {
+        HStack(spacing: 6) {
+            ForEach(stages, id: \.self) { s in
+                let on = !hidden.contains(s)
+                Button {
+                    if on {
+                        if stages.count - hidden.count > 1 { hidden.insert(s) }
+                    } else {
+                        hidden.remove(s)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Circle().fill(on ? s.color : Color.clear)
+                            .overlay(Circle().stroke(s.color, lineWidth: 1.5))
+                            .frame(width: 8, height: 8)
+                        Text(s.rawValue)
+                            .font(StrandFont.caption)
+                            .foregroundStyle(on ? StrandPalette.textPrimary : StrandPalette.textTertiary)
+                            .strikethrough(!on)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Capsule().fill(on ? s.color.opacity(0.15) : Color.clear))
+                    .overlay(Capsule().stroke(StrandPalette.hairlineStrong, lineWidth: on ? 0 : 1))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(s.rawValue))
+                .accessibilityValue(Text(on ? "Shown" : "Hidden"))
+            }
+            Spacer(minLength: 0)
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+    }
+
+    private func chart(stages: [SleepStageTrend.Stage], shown: [SleepStageTrend.Stage]) -> some View {
         Chart {
             ForEach(bars) { b in
                 // Declared bottom-up: deep, REM, light, unstaged.
-                ForEach(stages, id: \.self) { s in
+                ForEach(shown, id: \.self) { s in
                     if weekly {
                         BarMark(x: .value("Seven days from", label(b)), y: .value("Hours", s.hours(b)))
                             .foregroundStyle(by: .value("Stage", s.rawValue))
@@ -111,8 +159,9 @@ struct SleepStagesChart: View {
                 }
             }
         }
+        // The full domain, so a stage keeps its colour while others are hidden.
         .chartForegroundStyleScale(domain: stages.map(\.rawValue), range: stages.map(\.color))
-        .chartLegend(position: .bottom, spacing: 6)
+        .chartLegend(.hidden)
         .chartYAxis {
             AxisMarks(position: .leading) { v in
                 AxisGridLine()
@@ -128,7 +177,6 @@ struct SleepStagesChart: View {
                 }
             }
         }
-        .frame(height: height)
         .accessibilityLabel(Text("Hours asleep per night by sleep stage"))
     }
 
@@ -173,7 +221,7 @@ struct SleepStagesTrendCard: View {
                     }
                 }
                 if bars.count >= 2 {
-                    SleepStagesChart(bars: bars, weekly: weekly, height: 180)
+                    SleepStagesChart(bars: bars, weekly: weekly, height: 210)
                     averages(bars)
                 } else {
                     Text("Not enough nights yet.")
