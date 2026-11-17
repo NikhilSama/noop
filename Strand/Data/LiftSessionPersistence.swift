@@ -35,6 +35,8 @@ enum LiftSessionPersistence {
         /// as absent and the session resumes with nothing pending, which is exactly right.
         var pendingValues: [PendingValue]?
         var pendingWarmups: [SlotBox]?
+        /// nikhil/custom: sets skipped for this session. Absent from older snapshots: nothing skipped.
+        var skipped: [SlotBox]?
 
         struct PendingValue: Codable, Equatable {
             var exerciseIndex: Int
@@ -176,6 +178,10 @@ enum LiftSessionPersistence {
                 },
             pendingWarmups: pendingWarmups
                 .sorted { ($0.exerciseIndex, $0.setIndex) < ($1.exerciseIndex, $1.setIndex) }
+                .map { Snapshot.SlotBox(exerciseIndex: $0.exerciseIndex, setIndex: $0.setIndex) },
+            // Written only when something was skipped, so a session without skips encodes as before.
+            skipped: engine.skipped.isEmpty ? nil : engine.skipped
+                .sorted { ($0.exerciseIndex, $0.setIndex) < ($1.exerciseIndex, $1.setIndex) }
                 .map { Snapshot.SlotBox(exerciseIndex: $0.exerciseIndex, setIndex: $0.setIndex) })
     }
 
@@ -219,7 +225,9 @@ enum LiftSessionPersistence {
                             restSec: $0.restSec)
         }
         return LiftSessionEngine(restoring: plan, startTs: s.startSec,
-                                 stage: unbox(s.stage), sets: sets, stageStartedAt: s.stageStartedAt)
+                                 stage: unbox(s.stage), sets: sets, stageStartedAt: s.stageStartedAt,
+                                 skipped: Set((s.skipped ?? []).map { LiftSlot(exerciseIndex: $0.exerciseIndex,
+                                                                               setIndex: $0.setIndex) }))
     }
 
     private static func box(_ stage: LiftSessionEngine.Stage) -> Snapshot.StageBox {

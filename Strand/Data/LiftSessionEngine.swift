@@ -135,6 +135,9 @@ struct LiftSessionEngine: Equatable {
     private(set) var sets: [LiftRecordedSet]
     /// When the current stage began, so a set's duration is measurable.
     private(set) var stageStartedAt: Int
+    /// nikhil/custom: sets passed over for THIS session only (the watch's skip). The plan keeps them, so
+    /// the program is untouched; the session just stops heading to them. Starting one takes it back.
+    private(set) var skipped: Set<LiftSlot> = []
 
     /// Undo stack: whole-state snapshots rather than inverse operations. A gym is a bad place to be
     /// one tap ahead of yourself, and restoring a snapshot cannot get the arithmetic wrong the way a
@@ -151,6 +154,7 @@ struct LiftSessionEngine: Equatable {
         var stage: Stage
         var sets: [LiftRecordedSet]
         var stageStartedAt: Int
+        var skipped: Set<LiftSlot>
     }
 
     init(plan: [LiftPlanItem], startTs: Int) {
@@ -166,12 +170,14 @@ struct LiftSessionEngine: Equatable {
     /// The undo history is deliberately NOT restored: it is a within-sitting convenience, and a
     /// stack that survives a relaunch invites reaching back past a save boundary.
     init(restoring plan: [LiftPlanItem], startTs: Int, stage: Stage,
-         sets: [LiftRecordedSet], stageStartedAt: Int) {
+         sets: [LiftRecordedSet], stageStartedAt: Int, skipped: Set<LiftSlot> = []) {
         self.plan = plan
         self.startTs = startTs
         self.stage = stage
         self.sets = sets
         self.stageStartedAt = stageStartedAt
+        self.skipped = skipped.filter { s in plan.indices.contains(s.exerciseIndex)
+            && (1...plan[s.exerciseIndex].targetSets).contains(s.setIndex) }
     }
 
     // MARK: - The sheet
@@ -191,6 +197,11 @@ struct LiftSessionEngine: Equatable {
 
     func isCompleted(_ slot: LiftSlot) -> Bool { recordedSet(for: slot) != nil }
 
+    func isSkipped(_ slot: LiftSlot) -> Bool { skipped.contains(slot) }
+
+    /// Nothing left to do on it this session: performed, or skipped.
+    private func isDone(_ slot: LiftSlot) -> Bool { isCompleted(slot) || skipped.contains(slot) }
+
     /// The slot being worked or rested from.
     var currentSlot: LiftSlot? {
         switch stage {
@@ -206,7 +217,7 @@ struct LiftSessionEngine: Equatable {
     /// This is the SHEET's answer, used to open a session and to know when everything is done. It is
     /// deliberately NOT what `advance` follows after a set — see `slotAfter(_:)`.
     var nextPendingSlot: LiftSlot? {
-        allSlots.first { !isCompleted($0) }
+        allSlots.first { !isDone($0) }
     }
 
     /// Where the session goes after finishing `slot`: the next uncompleted set of the SAME exercise,
@@ -223,7 +234,7 @@ struct LiftSessionEngine: Equatable {
     /// your sets on the machine you are standing at. The skipped exercise is not forgotten — it is
     /// still pending, and it is what you get once the current one is done.
     func slotAfter(_ slot: LiftSlot) -> LiftSlot? {
-        slots(forExercise: slot.exerciseIndex).first { !isCompleted($0) } ?? nextPendingSlot
+        slots(forExercise: slot.exerciseIndex).first { !isDone($0) } ?? nextPendingSlot
     }
 
     /// The set the session is heading to after the current one — what the minimised bar and the Lock
@@ -236,8 +247,8 @@ struct LiftSessionEngine: Equatable {
         case .warmup:
             return nextPendingSlot
         case .working(let slot), .resting(let slot, _):
-            return slots(forExercise: slot.exerciseIndex).first { !isCompleted($0) && $0 != slot }
-                ?? allSlots.first { !isCompleted($0) && $0 != slot }
+            return slots(forExercise: slot.exerciseIndex).first { !isDone($0) && $0 != slot }
+                ?? allSlots.first { !isDone($0) && $0 != slot }
         case .finished:
             return nil
         }
@@ -309,8 +320,9 @@ struct LiftSessionEngine: Equatable {
 
     /// Slots never performed. Finishing the session asks once what happens to all of them; a set that
     /// was performed is complete whether or not anything was typed into it (Utku, 21 Sep 2026).
+    /// Skipped sets are not among them: skipping already answered the question.
     var unperformedSlots: [LiftSlot] {
-        allSlots.filter { !isCompleted($0) }
+        allSlots.filter { !isDone($0) }
     }
 
     // MARK: - Actions
@@ -325,6 +337,7 @@ struct LiftSessionEngine: Equatable {
         guard planItem(for: slot) != nil else { return }
         pushHistory()
         sets.removeAll { $0.slot == slot }
+        skipped.remove(slot)
         stage = .working(slot)
         stageStartedAt = now
     }
@@ -367,6 +380,23 @@ struct LiftSessionEngine: Equatable {
         case .finished:
             break
         }
+    }
+
+    /// nikhil/custom: whether `slot` can be skipped: a set not yet done, not the one being worked (finish
+    /// or abandon that first), in a session still running.
+    func canSkip(_ slot: LiftSlot) -> Bool {
+        planItem(for: slot) != nil && !isDone(slot) && stage != .finished && stage != .working(slot)
+            && (1...plan[slot.exerciseIndex].targetSets).contains(slot.setIndex)
+    }
+
+    /// Pass over a pending set for this session. The stage stays where it is (a running rest keeps
+    /// running); only where the session heads next changes. Undoable, and starting the set takes it back.
+    @discardableResult
+    mutating func skip(_ slot: LiftSlot) -> Bool {
+        guard canSkip(slot) else { return false }
+        pushHistory()
+        skipped.insert(slot)
+        return true
     }
 
     /// Fill in (or correct) what a set actually was. Editing, never appending — the set already
@@ -422,6 +452,7 @@ struct LiftSessionEngine: Equatable {
     mutating func removeSet(fromExercise index: Int) -> Bool {
         guard canRemoveSet(fromExercise: index) else { return false }
         pushHistory()
+        skipped.remove(LiftSlot(exerciseIndex: index, setIndex: plan[index].targetSets))
         plan[index].targetSets -= 1
         return true
     }
@@ -465,10 +496,11 @@ struct LiftSessionEngine: Equatable {
         stage = previous.stage
         sets = previous.sets
         stageStartedAt = previous.stageStartedAt
+        skipped = previous.skipped
     }
 
     private mutating func pushHistory() {
         history.append(Snapshot(plan: plan, stage: stage,
-                                sets: sets, stageStartedAt: stageStartedAt))
+                                sets: sets, stageStartedAt: stageStartedAt, skipped: skipped))
     }
 }

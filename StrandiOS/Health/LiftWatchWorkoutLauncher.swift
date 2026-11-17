@@ -21,8 +21,12 @@ enum LiftWatchWorkoutLauncher {
         LiftSessionController.onSessionStarted = { start(log: log) }
         LiftSessionController.onSessionEnded = { saved in end(saved: saved, log: log) }
         WatchSessionBridge.onLiftAction = { action in
-            controller.applyWatchAction(LiftSlot(exerciseIndex: action.exerciseIndex, setIndex: action.setIndex),
-                                        weightKg: action.weightKg, reps: action.reps)
+            let slot = LiftSlot(exerciseIndex: action.exerciseIndex, setIndex: action.setIndex)
+            if action.skip == true {
+                controller.skipFromWatch(slot)
+            } else {
+                controller.applyWatchAction(slot, weightKg: action.weightKg, reps: action.reps)
+            }
         }
         WatchSessionBridge.liftStateProvider = { currentStatePayload() }
         // Push on every session change (engine, typed numbers, last-session greys), coalesced.

@@ -15,6 +15,8 @@ import WhoopStore
 struct AsleepDurationData {
     let points: [TrendPoint]
     let typicalTotalMin: Double?
+    /// nikhil/custom: the same nights split by stage (last 30 days), drawn stacked when there are enough.
+    var stageNights: [SleepStageTrend.Bar] = []
 
     /// yyyy-MM-dd → Date (en_US_POSIX, UTC) — matches `SleepView.dayParser`.
     private static let dayParser: DateFormatter = {
@@ -40,7 +42,8 @@ struct AsleepDurationData {
         let points = recent.count >= 2 ? recent : mk(days[...])
         let totals = days.compactMap { $0.totalSleepMin }.filter { $0 > 0 }
         let typical = totals.isEmpty ? nil : totals.reduce(0, +) / Double(totals.count)
-        return AsleepDurationData(points: points, typicalTotalMin: typical)
+        return AsleepDurationData(points: points, typicalTotalMin: typical,
+                                  stageNights: SleepStageTrend.nights(days, last: 30))
     }
 }
 
@@ -60,7 +63,10 @@ struct AsleepDurationCard: View {
                 height: NoopMetrics.chartHeight,
                 tint: StrandPalette.restColor,
                 chart: {
-                    if pts.count >= 2 {
+                    if data.stageNights.count >= 2 {
+                        // nikhil/custom: stacked deep / REM / light per night.
+                        SleepStagesChart(bars: data.stageNights, height: NoopMetrics.chartHeight)
+                    } else if pts.count >= 2 {
                         TrendChart(points: pts,
                                    gradient: StrandPalette.restGradient,
                                    valueRange: Self.trendRange(pts),

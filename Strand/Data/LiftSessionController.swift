@@ -161,6 +161,14 @@ final class LiftSessionController: ObservableObject {
         }
     }
 
+    /// nikhil/custom: skip `slot` for this session only (the watch's skip button). The program keeps the set;
+    /// numbers typed for it in advance are kept too, so starting it again later brings them back. Only
+    /// the set the watch was showing is skipped, so a stale press does nothing.
+    func skipFromWatch(_ slot: LiftSlot) {
+        guard watchFocusSlot() == slot, engine?.skip(slot) == true else { return }
+        persist()
+    }
+
     /// nikhil/custom: set by the iOS app so a NEW Lift Log session also starts a strength workout on the
     /// Watch, and the end of the session (saved or discarded) ends it. Not fired for a resumed session.
     static var onSessionStarted: (() -> Void)?
@@ -578,10 +586,12 @@ final class LiftSessionController: ObservableObject {
         for slot in engine.allSlots where !engine.isCompleted(slot) {
             let typed = pendingValues[slot]
             let grey = carry(for: slot)
+            // nikhil/custom: a skipped set is never completed at finish; it saves as not performed.
+            let complete = completingUnfinished && !engine.isSkipped(slot)
             out.append(FinishedSet(slot: slot,
-                                   weightKg: completingUnfinished ? typed?.weightKg ?? grey.weightKg : 0,
-                                   reps: completingUnfinished ? typed?.reps ?? grey.reps : 0,
-                                   rpe: completingUnfinished ? typed?.rpe ?? planned(slot) : nil,
+                                   weightKg: complete ? typed?.weightKg ?? grey.weightKg : 0,
+                                   reps: complete ? typed?.reps ?? grey.reps : 0,
+                                   rpe: complete ? typed?.rpe ?? planned(slot) : nil,
                                    isWarmup: pendingWarmups.contains(slot),
                                    startTs: nil, endTs: nil, restSec: nil))
         }

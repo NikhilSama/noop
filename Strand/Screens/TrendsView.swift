@@ -326,6 +326,9 @@ struct TrendsView: View {
                             .staggeredAppear(index: 3)
                         smallMultiples(hrv: metrics.hrv, rhr: metrics.rhr, strain: metrics.strain)
                             .staggeredAppear(index: 4)
+                        // nikhil/custom — sleep stages per night (or per 7 days) over the selected range.
+                        SleepStagesTrendCard(rangeDays: range.days)
+                            .staggeredAppear(index: 4)
                         // nikhil/custom — zone minutes per seven days over the selected range, against targets.
                         CardioZonesTrendCard(weekCount: min(max((range.days ?? 364) / 7, 4), 52))
                             .staggeredAppear(index: 4)

@@ -213,6 +213,8 @@ struct SleepModel {
     let typicalLightMin: Double?
 
     let trendPoints: [TrendPoint]
+    /// nikhil/custom: the last 30 nights by stage, for the stacked "Asleep duration" chart.
+    let stageNights: [SleepStageTrend.Bar]
 
     /// Recency-weighted sleep-debt estimate across the latest 14 usable nights, with
     /// raw per-night deltas for context. Computed once per data change.
@@ -583,6 +585,7 @@ extension SleepModel {
             typicalRemMin: typicalStageMin(days: inputs.days, \.remMin),
             typicalLightMin: typicalStageMin(days: inputs.days, \.lightMin),
             trendPoints: durationTrendPoints(days: inputs.days),
+            stageNights: SleepStageTrend.nights(inputs.days, last: 30),
             sleepDebtLedger: debtLedger(days: inputs.days, napSleepMinByDay: napSleepMinByDay))
     }
 }

@@ -52,12 +52,15 @@ struct LiftWatchState: Codable, Equatable {
     static func decode(_ data: Data) -> LiftWatchState? { try? JSONDecoder().decode(LiftWatchState.self, from: data) }
 }
 
-/// Watch → phone: the big button on the watch's Lift Log screen, with the numbers shown for the set.
+/// Watch → phone: the big button on the watch's Lift Log screen, with the numbers shown for the set, or
+/// its small skip button.
 struct LiftWatchAction: Codable, Equatable {
     var exerciseIndex: Int
     var setIndex: Int
     var weightKg: Double?
     var reps: Int?
+    /// Skip this set for this session instead of starting it. Absent (nil) from older watch builds.
+    var skip: Bool? = nil
 
     static let messageKey = "custom.lift.action"
     /// Watch → phone: "send me the current state" (screen appeared / app relaunched).

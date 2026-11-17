@@ -1758,7 +1758,8 @@ struct SleepView: View {
         // The memoized model values keep the Sleep-tab perf (no per-render recompute); the Today host
         // builds AsleepDurationData itself from the same source, so the two render identical numbers.
         AsleepDurationCard(data: AsleepDurationData(points: model.trendPoints,
-                                                    typicalTotalMin: model.typicalTotalMin))
+                                                    typicalTotalMin: model.typicalTotalMin,
+                                                    stageNights: model.stageNights))
     }
 
     /// Compare only after the screen has loaded the refreshed blocks and scoring has settled.

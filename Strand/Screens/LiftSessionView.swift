@@ -305,6 +305,8 @@ struct LiftSessionView: View {
     private func setRow(_ engine: LiftSessionEngine, slot: LiftSlot) -> some View {
         let recorded = engine.recordedSet(for: slot)
         let isWorking = engine.stage == .working(slot)
+        // nikhil/custom: skipped for this session (from the watch); tapping the tick starts it after all.
+        let skipped = engine.isSkipped(slot)
 
         return HStack(spacing: 8) {
             // The set number IS the warm-up toggle. Warm-ups are excluded from volume and from the
@@ -342,7 +344,7 @@ struct LiftSessionView: View {
             Button {
                 if recorded == nil { session.start(slot) } else { session.start(slot) }
             } label: {
-                Image(systemName: recorded == nil ? "circle" : "checkmark.circle.fill")
+                Image(systemName: skipped ? "forward.end.circle" : recorded == nil ? "circle" : "checkmark.circle.fill")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(recorded == nil
                                      ? StrandPalette.textTertiary
@@ -350,10 +352,12 @@ struct LiftSessionView: View {
             }
             .buttonStyle(.plain)
             .frame(width: Self.tickColumnWidth)
-            .accessibilityLabel(recorded == nil
+            .accessibilityLabel(skipped ? String(localized: "Skipped — start this set")
+                                : recorded == nil
                                 ? String(localized: "Start this set")
                                 : String(localized: "Redo this set"))
         }
+        .opacity(skipped ? 0.45 : 1)
         .padding(.vertical, 6)
         .padding(.horizontal, 8)
         .background(rowBackground(isWorking: isWorking, done: recorded != nil),

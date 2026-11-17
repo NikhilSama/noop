@@ -117,19 +117,36 @@ struct WatchLiftView: View {
                                   sensitivity: .low, isContinuous: false, isHapticFeedbackEnabled: true)
             .onChange(of: crown) { _, new in crownMoved(to: new) }
             .onAppear { crownFocused = true }
-            Button {
-                lift.send(LiftWatchAction(
-                    exerciseIndex: s.exerciseIndex, setIndex: s.setIndex,
-                    weightKg: s.imperial ? weight / 2.2046226218 : weight,
-                    reps: Int(reps)))
-            } label: {
-                Text(s.stage == .working ? "Done" : "Start set")
-                    .font(StrandFont.subhead)
-                    .frame(maxWidth: .infinity)
+            HStack(spacing: 4) {
+                Button {
+                    lift.send(LiftWatchAction(
+                        exerciseIndex: s.exerciseIndex, setIndex: s.setIndex,
+                        weightKg: s.imperial ? weight / 2.2046226218 : weight,
+                        reps: Int(reps)))
+                } label: {
+                    Text(s.stage == .working ? "Done" : "Start set")
+                        .font(StrandFont.subhead)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(s.stage == .working ? StrandPalette.recoveryColor(100) : StrandPalette.effortColor)
+                .foregroundStyle(StrandPalette.inkOnBright)
+                // Skip this set for this session only (the program keeps it). Small, beside the big
+                // button: doing the set is the common case. Not offered mid-set.
+                if s.stage != .working {
+                    Button {
+                        lift.send(LiftWatchAction(exerciseIndex: s.exerciseIndex, setIndex: s.setIndex,
+                                                  skip: true))
+                    } label: {
+                        Image(systemName: "forward.end.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(StrandPalette.textSecondary)
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(width: 40)
+                    .accessibilityLabel("Skip this set")
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .tint(s.stage == .working ? StrandPalette.recoveryColor(100) : StrandPalette.effortColor)
-            .foregroundStyle(StrandPalette.inkOnBright)
             .disabled(lift.sending)
         }
         .padding(.horizontal, 4)
