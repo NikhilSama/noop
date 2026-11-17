@@ -144,6 +144,8 @@ struct CardioZonesTrendCard: View {
     @StateObject private var profile = ProfileStore()
     @AppStorage(CardioZones.revisionKey) private var revision = 0
     @State private var weeks: [CardioZones.Week] = []
+    /// Zones switched off in the chart's legend ("Z1"…"Z5").
+    @State private var hiddenZones: Set<String> = []
 
     var body: some View {
         Group {
@@ -158,6 +160,9 @@ struct CardioZonesTrendCard: View {
                         ProgressView().controlSize(.small)
                     } else {
                         chart
+                        SeriesToggleLegend(items: (1...5).map {
+                            .init(key: "Z\($0)", label: "Z\($0)", color: StrandPalette.hrZoneColor($0))
+                        }, hidden: $hiddenZones)
                         onTargetLines
                     }
                 }
@@ -184,12 +189,12 @@ struct CardioZonesTrendCard: View {
         let shown = labels.enumerated().filter { ($0.offset - (labels.count - 1)) % every == 0 }.map(\.element)
         return Chart {
             ForEach(weeks) { w in
-                ForEach(1...5, id: \.self) { z in
+                ForEach((1...5).filter { !hiddenZones.contains("Z\($0)") }, id: \.self) { z in
                     BarMark(x: .value("Seven days from", label(w)), y: .value("Minutes", w.minutes[z - 1]))
                         .foregroundStyle(by: .value("Zone", "Z\(z)"))
                 }
             }
-            if let t = CardioZones.target(2), t.low > 0 {
+            if let t = CardioZones.target(2), t.low > 0, !hiddenZones.contains("Z2") {
                 RuleMark(y: .value("Zone 2 target", t.low))
                     .foregroundStyle(StrandPalette.textTertiary)
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
@@ -199,6 +204,7 @@ struct CardioZonesTrendCard: View {
             }
         }
         .chartForegroundStyleScale(domain: names, range: (1...5).map { StrandPalette.hrZoneColor($0) })
+        .chartLegend(.hidden)
         .chartXAxis {
             AxisMarks(values: shown) { _ in
                 AxisValueLabel()
