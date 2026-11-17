@@ -8,7 +8,7 @@ import WhoopStore
 // read the workout detail screen and the Workouts zones summary use); an imported WHOOP split is never used.
 // Every workout counts, strength sessions included, unless the setting leaves strength out.
 //
-// Each zone's target is a weekly band in minutes (low…high), or none. The defaults are Nikhil's plan in the
+// Each zone's target is a band in minutes per seven days (low…high), or none. The defaults are Nikhil's plan in the
 // HealthVault: zone 2 about five sessions a week up to ~3 h (150–180 min), one VO2max interval session
 // (zone 3, 15–30 min, since his zones put VT2 161 at the top of zone 3), and as little as possible above VT2
 // (zone 4 up to 5 min, zone 5 none) for the heart. Zone 1 has no target.
@@ -79,7 +79,7 @@ enum CardioZones {
     }
 
     struct Week: Identifiable, Equatable {
-        /// The week's Monday, local midnight.
+        /// The window's first day, local midnight; it runs seven days from here.
         var start: Date
         /// Zones 1…5.
         var minutes: [Double]
@@ -88,26 +88,30 @@ enum CardioZones {
         var total: Double { minutes.reduce(0, +) }
     }
 
-    /// The last `count` Mon–Sun weeks ending with this one, oldest first, each with its workouts' zone
-    /// minutes. Weeks with nothing are kept as zeros so the chart's axis is continuous.
-    static func weeks(_ rows: [WorkoutRow], count: Int, now: Date = Date(), includeStrength: Bool,
+    /// `count` back-to-back seven-day windows, the newest ending with the day of `endDay` (today, or a day
+    /// the review has stepped back to), oldest first, each with its workouts' zone minutes. Rolling rather
+    /// than Mon–Sun, so the newest is always a full seven days. Empty windows stay as zeros so the chart's
+    /// axis is continuous.
+    static func weeks(_ rows: [WorkoutRow], count: Int, endDay: Date = Date(), includeStrength: Bool,
                       calendar cal: Calendar = .current,
                       zoneMinutes: (WorkoutRow) async -> [Double]?) async -> [Week] {
-        let thisMonday = NutritionHistory.monday(of: now, calendar: cal)
-        let starts = (0..<max(count, 1)).reversed().compactMap { cal.date(byAdding: .day, value: -7 * $0, to: thisMonday) }
+        guard let end = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: endDay)) else { return [] }
+        let starts = (1...max(count, 1)).reversed().compactMap { cal.date(byAdding: .day, value: -7 * $0, to: end) }
         guard let first = starts.first else { return [] }
         var out = starts.map { Week(start: $0, minutes: [0, 0, 0, 0, 0], sessions: 0) }
         for row in rows {
             let date = Date(timeIntervalSince1970: TimeInterval(row.startTs))
-            guard date >= first, date <= now, includeStrength || !isStrength(row.sport) else { continue }
-            let monday = NutritionHistory.monday(of: date, calendar: cal)
-            guard let i = out.firstIndex(where: { $0.start == monday }),
+            guard date >= first, date < end, includeStrength || !isStrength(row.sport) else { continue }
+            guard let i = out.lastIndex(where: { $0.start <= date }),
                   let m = await zoneMinutes(row), m.count == 5 else { continue }
             for z in 0..<5 { out[i].minutes[z] += m[z] }
             out[i].sessions += 1
         }
         return out
     }
+
+    /// Bumped when the targets are saved, so every card showing them redraws and reloads.
+    static let revisionKey = "noop.cardioZoneTargetsRevision"
 }
 
 extension Repository {

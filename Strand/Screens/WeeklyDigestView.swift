@@ -30,6 +30,17 @@ enum WeeklyDigestSource {
     static func digest(from days: [DailyMetric],
                        anchorDay: String,
                        effortDisplayFactor: Double = UnitPrefs.currentEffortDisplayFactor()) -> WeeklyDigest {
+        WeeklyDigestEngine.build(byMetric: series(days), anchorDay: anchorDay, effortDisplayFactor: effortDisplayFactor)
+    }
+
+    /// nikhil/custom — the digest for the rolling seven days ending on `endDay` (Trends' top section).
+    static func rollingDigest(from days: [DailyMetric], endDay: String,
+                              effortDisplayFactor: Double = UnitPrefs.currentEffortDisplayFactor()) -> WeeklyDigest {
+        WeeklyDigestEngine.buildRolling(byMetric: series(days), endDay: endDay, effortDisplayFactor: effortDisplayFactor)
+    }
+
+    /// Each tracked metric as a "yyyy-MM-dd"→value map.
+    private static func series(_ days: [DailyMetric]) -> [WeeklyMetric: [String: Double]] {
         var charge: [String: Double] = [:]
         var effort: [String: Double] = [:]
         var rest: [String: Double] = [:]
@@ -43,10 +54,7 @@ enum WeeklyDigestSource {
             if let v = d.restingHr { rhr[d.day] = Double(v) }
             if let v = d.avgHrv    { hrv[d.day] = v }
         }
-        return WeeklyDigestEngine.build(
-            byMetric: [.charge: charge, .effort: effort, .rest: rest, .rhr: rhr, .hrv: hrv],
-            anchorDay: anchorDay,
-            effortDisplayFactor: effortDisplayFactor)
+        return [.charge: charge, .effort: effort, .rest: rest, .rhr: rhr, .hrv: hrv]
     }
 
     /// The 0–100 Rest composite for a persisted day, via AnalyticsEngine's display-path

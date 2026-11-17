@@ -188,6 +188,8 @@ struct TrendsView: View {
         HostedTrendData.valueRange(pts, fallback: fallback, pad: pad)
     }
 
+    private static func average(_ v: [Double]) -> Double? { v.isEmpty ? nil : v.reduce(0, +) / Double(v.count) }
+
     private func mean(_ pts: [TrendPoint]) -> Double? {
         guard !pts.isEmpty else { return nil }
         return pts.map(\.value).reduce(0, +) / Double(pts.count)
@@ -313,7 +315,10 @@ struct TrendsView: View {
                         weeklyDigestNav
                             .staggeredAppear(index: 0)
                         // The Charge / Effort / Rest trio, presented in NOOP's pip language.
-                        weekInReview(charge: metrics.recovery, effort: metrics.strain, rest: metrics.rest)
+                        // nikhil/custom: the trio and the cardio zones cover the same seven days as the digest.
+                        weekInReview(start: WeeklyDigestEngine.addDays(weekAnchorDay, -6), end: weekAnchorDay)
+                            .staggeredAppear(index: 1)
+                        CardioZonesWeekCard(endDay: weekAnchorDay)
                             .staggeredAppear(index: 1)
                         rangeBar(recovery: metrics.recovery)
                             .staggeredAppear(index: 2)
@@ -321,13 +326,13 @@ struct TrendsView: View {
                             .staggeredAppear(index: 3)
                         smallMultiples(hrv: metrics.hrv, rhr: metrics.rhr, strain: metrics.strain)
                             .staggeredAppear(index: 4)
+                        // nikhil/custom — zone minutes per seven days over the selected range, against targets.
+                        CardioZonesTrendCard(weekCount: min(max((range.days ?? 364) / 7, 4), 52))
+                            .staggeredAppear(index: 4)
                         // Long-horizon training load (CTL/ATL/TSB). Uses the FULL history, not the
                         // range window — chronic load is inherently a 42-day horizon. Self-hides its
                         // chart behind an honest "needs N more days" state until enough history exists.
                         TrainingLoadCard(days: repo.days)
-                            .staggeredAppear(index: 5)
-                        // nikhil/custom — weekly minutes per HR zone from workouts, against targets.
-                        CardioZonesCard(weekCount: min(max((range.days ?? 364) / 7, 4), 52))
                             .staggeredAppear(index: 5)
                         yearStrip
                             .staggeredAppear(index: 6)
@@ -358,27 +363,24 @@ struct TrendsView: View {
     /// week stepper can go.
     private var earliestDay: String? { repo.days.first?.day }
 
-    /// The most negative `weekOffset` allowed: the number of whole weeks between the earliest day's week
-    /// and this week. Beyond that there's no data to digest, so the back chevron disables. 0 when history
-    /// is empty or unparseable (so we stay on this week).
+    /// The most negative `weekOffset` allowed: the most seven-day steps back whose window still reaches
+    /// the earliest day. Beyond that there's no data to digest, so the back chevron disables. 0 when
+    /// history is empty or unparseable (so we stay on the last seven days).
+    /// nikhil/custom: rolling seven-day windows ending today, not calendar weeks.
     private var minWeekOffset: Int {
-        guard
-            let earliest = earliestDay,
-            let earliestMon = WeeklyDigestEngine.mondayOfWeek(containing: earliest),
-            let thisMon = WeeklyDigestEngine.mondayOfWeek(containing: Repository.localDayKey(Date()))
-        else { return 0 }
-        // Walk weeks back from this Monday until we pass the earliest week. Bounded by history length.
+        guard let earliest = earliestDay, WeeklyDigestEngine.parseYMD(earliest) != nil else { return 0 }
         var off = 0
-        var mon = thisMon
-        while mon > earliestMon && off > -520 {           // hard cap ~10 years so a bad date can't spin
-            mon = WeeklyDigestEngine.addDays(mon, -7)
+        var end = Repository.localDayKey(Date())
+        // Step while the NEXT window back still ends on or after the earliest day. Hard cap ~10 years.
+        while WeeklyDigestEngine.addDays(end, -7) >= earliest && off > -520 {
+            end = WeeklyDigestEngine.addDays(end, -7)
             off -= 1
         }
         return off
     }
 
-    /// The anchor day (any day in the target week) for the current `weekOffset`: today shifted back by
-    /// `weekOffset` whole weeks. The engine snaps it to that week's Monday.
+    /// The last day of the digest's seven-day window for the current `weekOffset`: today shifted back by
+    /// `weekOffset` whole weeks. nikhil/custom: the window is the seven days ending here.
     private var weekAnchorDay: String {
         WeeklyDigestEngine.addDays(Repository.localDayKey(Date()), weekOffset * 7)
     }
@@ -396,7 +398,7 @@ struct TrendsView: View {
     /// self-hides only when there's no data in ANY week (an all-empty history), matching the old card.
     @ViewBuilder
     private var weeklyDigestNav: some View {
-        let digest = WeeklyDigestSource.digest(from: repo.days, anchorDay: weekAnchorDay)
+        let digest = WeeklyDigestSource.rollingDigest(from: repo.days, endDay: weekAnchorDay)
         // Only hide the navigation entirely when the WHOLE history is empty — an empty PAST week still
         // shows the header + chevrons so the user can step to a week that does hold data.
         if repo.days.isEmpty {
@@ -446,7 +448,7 @@ struct TrendsView: View {
 
             Spacer()
             VStack(spacing: 2) {
-                Text(weekOffset == 0 ? String(localized: "This week") : weekOffsetLabel)
+                Text(weekOffset == 0 ? String(localized: "Last 7 days") : weekOffsetLabel)
                     .font(StrandFont.headline)
                     .foregroundStyle(StrandPalette.textPrimary)
                 Text("\(weeklyDigestRangeLabel(digest)) · \(daysSummary)")
@@ -475,26 +477,28 @@ struct TrendsView: View {
     /// "Last week" for -1, else the count of weeks back ("3 weeks ago") for the stepper's centre label.
     private var weekOffsetLabel: String {
         let n = -weekOffset
-        if n == 1 { return String(localized: "Last week") }
-        return String(localized: "\(n) weeks ago")
+        if n == 1 { return String(localized: "The 7 days before") }
+        return String(localized: "\(n) weeks back")
     }
 
     // MARK: Week in Review — the Charge / Effort / Rest trio in pip language
 
-    /// The three daily scores as NOOP pip rows over the resolved window: Charge (recovery, 0–100),
+    /// The three daily scores as NOOP pip rows over the seven days `start`…`end` (nikhil/custom: the
+    /// digest's window, not the range below): Charge (recovery, 0–100),
     /// Effort (strain, shown on the WHOOP 0–21 scale per the unit toggle) and Rest (sleep_performance
     /// composite, 0–100 — the same metric the Today Rest score shows, #732). Each value ticks up via
     /// `CountUpText`; the segmented `PipBar` cascades on appear. Self-
     /// hides when none of the three carry a window mean, so an empty history shows nothing here.
     @ViewBuilder
-    private func weekInReview(charge: ResolvedMetric, effort: ResolvedMetric, rest: ResolvedMetric) -> some View {
-        let chargeAvg = mean(charge.points)
-        let effortAvg = mean(effort.points)   // stored 0–100 internal Effort scale
-        let restAvg = mean(rest.points)
+    private func weekInReview(start: String, end: String) -> some View {
+        let window = repo.days.filter { $0.day >= start && $0.day <= end }
+        let chargeAvg = Self.average(window.compactMap(\.recovery))
+        let effortAvg = Self.average(window.compactMap(\.strain))   // stored 0–100 internal Effort scale
+        let restAvg = Self.average(window.compactMap { sleepPerfByDay[$0.day] })
         if chargeAvg != nil || effortAvg != nil || restAvg != nil {
             NoopCard {
                 VStack(alignment: .leading, spacing: NoopMetrics.cardInnerSpacing) {
-                    SectionHeader("Week in review", overline: "Charge · Effort · Rest")
+                    SectionHeader("Week in review", overline: "Charge · Effort · Rest · 7 days")
                     if let v = chargeAvg {
                         pipScoreRow(label: "Charge", value: v, range: 0...100,
                                     tint: StrandPalette.chargeColor, frac: v / 100,

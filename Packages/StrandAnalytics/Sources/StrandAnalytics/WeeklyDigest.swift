@@ -236,6 +236,23 @@ public enum WeeklyDigestEngine {
         guard let monday = mondayOfWeek(containing: anchorDay) else {
             return emptyDigest(weekStart: anchorDay, weekEnd: anchorDay)
         }
+        return build(byMetric: byMetric, weekStart: monday, effortDisplayFactor: effortDisplayFactor)
+    }
+
+    /// nikhil/custom — the same digest over the rolling seven days ENDING on `endDay` ("yyyy-MM-dd",
+    /// typically today), compared with the seven days before them and the baseline weeks before those,
+    /// rather than the calendar week. A non-parseable string yields an all-empty digest.
+    public static func buildRolling(byMetric: [WeeklyMetric: [String: Double]],
+                                    endDay: String,
+                                    effortDisplayFactor: Double = 1.0) -> WeeklyDigest {
+        guard parseYMD(endDay) != nil else { return emptyDigest(weekStart: endDay, weekEnd: endDay) }
+        return build(byMetric: byMetric, weekStart: addDays(endDay, -6), effortDisplayFactor: effortDisplayFactor)
+    }
+
+    /// The digest for the seven days starting `monday` (any start day; the calendar-week entry passes a
+    /// Monday), against the seven before it and the baseline weeks before those.
+    static func build(byMetric: [WeeklyMetric: [String: Double]], weekStart monday: String,
+                      effortDisplayFactor: Double) -> WeeklyDigest {
         let sunday = addDays(monday, 6)
         let lastMonday = addDays(monday, -7)
         let lastSunday = addDays(monday, -1)

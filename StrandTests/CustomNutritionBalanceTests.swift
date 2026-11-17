@@ -281,19 +281,24 @@ final class CustomCardioZonesTests: XCTestCase {
                           energyKcal: nil, avgHr: nil, maxHr: nil, strain: nil, distanceM: nil, zonesJSON: nil, notes: nil, steps: nil)
     }
 
-    func testWeeksGroupMondayToSundayAndSkipStrength() async {
+    func testWindowsAreRollingSevenDaysEndingTodayAndCanSkipStrength() async {
         let now = NutritionHistory.date("2026-11-17")!.addingTimeInterval(20 * 3600)   // Tue evening
-        let rows = [row("2026-11-16", sport: "Walking"), row("2026-11-17", sport: "Elliptical"),
-                    row("2026-11-15", sport: "Walking"), row("2026-11-16", hour: 18, sport: "Strength Training"),
+        let rows = [row("2026-11-11", sport: "Walking"), row("2026-11-17", sport: "Elliptical"),
+                    row("2026-11-10", sport: "Walking"), row("2026-11-16", hour: 18, sport: "Strength Training"),
                     row("2026-10-01", sport: "Walking")]
-        let weeks = await CardioZones.weeks(rows, count: 3, now: now, includeStrength: false) { _ in [1, 30, 2, 0, 0] }
-        XCTAssertEqual(weeks.map(\.start), ["2026-11-02", "2026-11-09", "2026-11-16"].map { NutritionHistory.date($0)! })
-        XCTAssertEqual(weeks[2].sessions, 2)
+        let weeks = await CardioZones.weeks(rows, count: 3, endDay: now, includeStrength: false) { _ in [1, 30, 2, 0, 0] }
+        // Windows of seven days ending with the 17th: 28 Oct–3 Nov, 4–10 Nov, 11–17 Nov.
+        XCTAssertEqual(weeks.map(\.start), ["2026-10-28", "2026-11-04", "2026-11-11"].map { NutritionHistory.date($0)! })
+        XCTAssertEqual(weeks[2].sessions, 2)   // the 11th and the 17th, not the strength session
         XCTAssertEqual(weeks[2].minutes, [2, 60, 4, 0, 0])
-        XCTAssertEqual(weeks[1].sessions, 1)   // Sunday the 15th closes the week of the 9th
+        XCTAssertEqual(weeks[1].sessions, 1)   // the 10th
         XCTAssertEqual(weeks[0].sessions, 0)
-        let withStrength = await CardioZones.weeks(rows, count: 3, now: now, includeStrength: true) { _ in [0, 10, 0, 0, 0] }
+        let withStrength = await CardioZones.weeks(rows, count: 3, endDay: now, includeStrength: true) { _ in [0, 10, 0, 0, 0] }
         XCTAssertEqual(withStrength[2].sessions, 3)
+        // A window the review stepped back to ends with that day.
+        let back = await CardioZones.weeks(rows, count: 1, endDay: NutritionHistory.date("2026-11-10")!, includeStrength: true) { _ in [0, 10, 0, 0, 0] }
+        XCTAssertEqual(back.first?.start, NutritionHistory.date("2026-11-04"))
+        XCTAssertEqual(back.first?.sessions, 1)
     }
 
     func testStatusBands() {

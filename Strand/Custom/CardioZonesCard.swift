@@ -4,27 +4,29 @@ import StrandAnalytics
 import StrandDesign
 import WhoopStore
 
-// nikhil/custom — the Trends screen's cardio zones card: this week's minutes in each HR zone against its
-// weekly target band, the last N weeks as stacked bars by zone, and how many complete weeks landed each
-// zone on target. The gear opens the targets (and whether strength sessions count). See `CardioZones`.
-struct CardioZonesCard: View {
-    /// How many Mon–Sun weeks the chart covers, this one included.
-    let weekCount: Int
+// nikhil/custom — the Trends screen's cardio zones, in two cards (see `CardioZones`):
+//   • `CardioZonesWeekCard`, at the top beside the week in review: the seven days ending on the review's
+//     last day, each zone's minutes against its target band. The gear opens the targets.
+//   • `CardioZonesTrendCard`, with the long-term charts: back-to-back seven-day windows over the selected
+//     range as stacked bars by zone, and how many windows landed each zone on target.
+struct CardioZonesWeekCard: View {
+    /// The window's last day, "yyyy-MM-dd".
+    let endDay: String
     @EnvironmentObject private var repo: Repository
     @StateObject private var profile = ProfileStore()
-    @State private var weeks: [CardioZones.Week] = []
+    @AppStorage(CardioZones.revisionKey) private var revision = 0
+    @State private var week: CardioZones.Week?
     @State private var loaded = false
     @State private var editing = false
-    @State private var revision = 0
+
+    private var isToday: Bool { endDay == Repository.localDayKey(Date()) }
 
     var body: some View {
         NoopCard {
             VStack(alignment: .leading, spacing: NoopMetrics.space3) {
                 header
-                if let current = weeks.last {
-                    ForEach(1...5, id: \.self) { zoneRow($0, minutes: current.minutes[$0 - 1]) }
-                    if weeks.count > 1 { chart }
-                    onTargetLines
+                if let week {
+                    ForEach(1...5, id: \.self) { zoneRow($0, minutes: week.minutes[$0 - 1]) }
                 } else if loaded {
                     Text("No workouts yet.").font(StrandFont.subhead).foregroundStyle(StrandPalette.textSecondary)
                 } else {
@@ -37,18 +39,20 @@ struct CardioZonesCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .task(id: "\(weekCount)-\(repo.refreshSeq)-\(revision)") { await reload() }
+        .task(id: "\(endDay)-\(repo.refreshSeq)-\(revision)") { await reload() }
         .sheet(isPresented: $editing) {
             CardioZoneTargetsSheet(zones: profile.hrZoneSet) { revision += 1 }
         }
     }
 
     private func reload() async {
-        let rows = await repo.workoutRows(days: weekCount * 7 + 7)
+        let end = NutritionHistory.date(endDay) ?? Date()
+        let days = Int(Date().timeIntervalSince(end) / 86_400) + 9
+        let rows = await repo.workoutRows(days: days)
         let zoneSet = profile.hrZoneSet
-        weeks = await CardioZones.weeks(rows, count: weekCount, includeStrength: CardioZones.includeStrength) { row in
+        week = await CardioZones.weeks(rows, count: 1, endDay: end, includeStrength: CardioZones.includeStrength) { row in
             await repo.cardioZoneMinutes(row, zoneSet: zoneSet)
-        }
+        }.last
         loaded = true
     }
 
@@ -58,8 +62,8 @@ struct CardioZonesCard: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Cardio zones").font(StrandFont.headline).foregroundStyle(StrandPalette.textPrimary)
-                if let w = weeks.last {
-                    Text("This week · \(w.sessions) sessions · \(Int(w.total.rounded())) min")
+                if let w = week {
+                    Text("\(isToday ? String(localized: "Last 7 days") : rangeLabel(w)) · \(w.sessions) sessions · \(Int(w.total.rounded())) min")
                         .font(StrandFont.caption).monospacedDigit().foregroundStyle(StrandPalette.textTertiary)
                 }
             }
@@ -109,6 +113,12 @@ struct CardioZonesCard: View {
         }
     }
 
+    /// "11–17 Nov" for a window the review stepped back to.
+    private func rangeLabel(_ w: CardioZones.Week) -> String {
+        let last = Calendar.current.date(byAdding: .day, value: 6, to: w.start) ?? w.start
+        return "\(w.start.formatted(.dateTime.day().month(.abbreviated)))–\(last.formatted(.dateTime.day().month(.abbreviated)))"
+    }
+
     static func targetText(_ t: CardioZones.Target) -> String {
         if t.high == 0 { return String(localized: "aim 0") }
         if t.low == 0 { return String(localized: "max \(t.high)") }
@@ -124,12 +134,58 @@ struct CardioZonesCard: View {
         }
     }
 
+}
+
+/// Seven-day windows over the selected range, stacked by zone, with the zone 2 target as a line.
+struct CardioZonesTrendCard: View {
+    /// How many seven-day windows, the newest ending today.
+    let weekCount: Int
+    @EnvironmentObject private var repo: Repository
+    @StateObject private var profile = ProfileStore()
+    @AppStorage(CardioZones.revisionKey) private var revision = 0
+    @State private var weeks: [CardioZones.Week] = []
+
+    var body: some View {
+        Group {
+            NoopCard {
+                VStack(alignment: .leading, spacing: NoopMetrics.space3) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Cardio zones over time").font(StrandFont.headline).foregroundStyle(StrandPalette.textPrimary)
+                        Text("Minutes per 7 days, last \(weekCount) × 7 days")
+                            .font(StrandFont.caption).foregroundStyle(StrandPalette.textTertiary)
+                    }
+                    if weeks.isEmpty {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        chart
+                        onTargetLines
+                    }
+                }
+            }
+            .task(id: "\(weekCount)-\(repo.refreshSeq)-\(revision)") { await reload() }
+        }
+    }
+
+    private func reload() async {
+        let rows = await repo.workoutRows(days: weekCount * 7 + 2)
+        let zoneSet = profile.hrZoneSet
+        weeks = await CardioZones.weeks(rows, count: weekCount, includeStrength: CardioZones.includeStrength) { row in
+            await repo.cardioZoneMinutes(row, zoneSet: zoneSet)
+        }
+    }
+
+    /// Each window labelled by its first day ("11 Nov"); categories, so a bar spans exactly its window.
+    private func label(_ w: CardioZones.Week) -> String { w.start.formatted(.dateTime.day().month(.abbreviated)) }
+
     private var chart: some View {
         let names = (1...5).map { "Z\($0)" }
+        let labels = weeks.map(label)
+        let every = weekCount > 26 ? 8 : (weekCount > 13 ? 4 : (weekCount > 6 ? 2 : 1))
+        let shown = labels.enumerated().filter { ($0.offset - (labels.count - 1)) % every == 0 }.map(\.element)
         return Chart {
             ForEach(weeks) { w in
                 ForEach(1...5, id: \.self) { z in
-                    BarMark(x: .value("Week", w.start, unit: .weekOfYear), y: .value("Minutes", w.minutes[z - 1]))
+                    BarMark(x: .value("Seven days from", label(w)), y: .value("Minutes", w.minutes[z - 1]))
                         .foregroundStyle(by: .value("Zone", "Z\(z)"))
                 }
             }
@@ -144,17 +200,16 @@ struct CardioZonesCard: View {
         }
         .chartForegroundStyleScale(domain: names, range: (1...5).map { StrandPalette.hrZoneColor($0) })
         .chartXAxis {
-            AxisMarks(values: .stride(by: .weekOfYear, count: weekCount > 14 ? 4 : (weekCount > 6 ? 2 : 1))) { _ in
-                AxisGridLine().foregroundStyle(StrandPalette.textTertiary.opacity(0.15))
-                AxisValueLabel(format: .dateTime.day().month(.abbreviated))
+            AxisMarks(values: shown) { _ in
+                AxisValueLabel()
             }
         }
         .frame(height: 180)
     }
 
-    /// "Zone 2 on target 4 of 11 weeks", over complete weeks (this one is still going).
+    /// "Z2 4/11": how many of the windows landed each zone on target.
     @ViewBuilder private var onTargetLines: some View {
-        let done = weeks.dropLast()
+        let done = weeks
         if !done.isEmpty {
             let lines = (1...5).compactMap { z -> String? in
                 guard let t = CardioZones.target(z) else { return nil }
@@ -162,7 +217,7 @@ struct CardioZonesCard: View {
                 return String(localized: "Z\(z) \(hit)/\(done.count)")
             }
             if !lines.isEmpty {
-                Text(String(localized: "Weeks on target: ") + lines.joined(separator: " · "))
+                Text(String(localized: "7-day windows on target: ") + lines.joined(separator: " · "))
                     .font(StrandFont.caption).monospacedDigit().foregroundStyle(StrandPalette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
